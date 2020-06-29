@@ -15,8 +15,8 @@ __config__ = {
     'inference': {
         'nstack': 8,
         'inp_dim': 256,
-        'oup_dim': 16,
-        'num_parts': 16,
+        'oup_dim': 12,
+        'num_parts': 12,
         'increase': 0,
         'keys': ['imgs'],
         'num_eval': 2958, ## number of val examples used. entire set is 2958
@@ -65,10 +65,12 @@ class Trainer(nn.Module):
         if not self.training:
             return self.model(imgs, **inps)
         else:
-            combined_hm_preds = self.model(imgs, **inps)
+            combined_hm_preds,combined_lb_preds = self.model(imgs, **inps)
             if type(combined_hm_preds)!=list and type(combined_hm_preds)!=tuple:
                 combined_hm_preds = [combined_hm_preds]
-            loss = self.calc_loss(**labels, combined_hm_preds=combined_hm_preds)
+            if type(combined_lb_preds)!=list and type(combined_lb_preds)!=tuple:
+                combined_lb_preds = [combined_lb_preds]
+            loss = self.calc_loss(**labels, combined_hm_preds=combined_hm_preds,combined_lb_preds=combined_lb_preds)
             return list(combined_hm_preds) + list([loss])
 
 def make_network(configs):

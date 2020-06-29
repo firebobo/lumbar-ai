@@ -5,6 +5,7 @@ import torch
 import numpy as np
 import torch.utils.data
 import utils.img
+import data.ref as ds
 
 class GenerateHeatmap():
     def __init__(self, output_res, num_parts):
@@ -54,58 +55,16 @@ class Dataset(torch.utils.data.Dataset):
 
     def loadImage(self, idx):
         ds = self.ds
-        
-        ## load + crop
+
         orig_img = ds.get_img(idx)
-        path = ds.get_path(idx)
-        orig_keypoints = ds.get_kps(idx)
-        kptmp = orig_keypoints.copy()
-        c = ds.get_center(idx)
-        s = ds.get_scale(idx)
-        normalize = ds.get_normalized(idx)
-        
-        cropped = utils.img.crop(orig_img, c, s, (self.input_res, self.input_res))
-        for i in range(np.shape(orig_keypoints)[1]):
-            if orig_keypoints[0,i,0] > 0:
-                orig_keypoints[0,i,:2] = utils.img.transform(orig_keypoints[0,i,:2], c, s, (self.input_res, self.input_res))
-        keypoints = np.copy(orig_keypoints)
-        
-        ## augmentation -- to be done to cropped image
-        height, width = cropped.shape[0:2]
-        center = np.array((width/2, height/2))
-        scale = max(height, width)/200
+        keypoints = ds.get_kps(idx)
+        labels = ds.get_labels(idx)
 
-        aug_rot=0
-        
-        aug_rot = (np.random.random() * 2 - 1) * 30.
-        aug_scale = np.random.random() * (1.25 - 0.75) + 0.75
-        scale *= aug_scale
-            
-        mat_mask = utils.img.get_transform(center, scale, (self.output_res, self.output_res), aug_rot)[:2]
-
-        mat = utils.img.get_transform(center, scale, (self.input_res, self.input_res), aug_rot)[:2]
-        inp = cv2.warpAffine(cropped, mat, (self.input_res, self.input_res)).astype(np.float32)/255
-        keypoints[:,:,0:2] = utils.img.kpt_affine(keypoints[:,:,0:2], mat_mask)
-        if np.random.randint(2) == 0:
-            inp = self.preprocess(inp)
-            inp = inp[:, ::-1]
-            keypoints = keypoints[:, ds.flipped_parts['mpii']]
-            keypoints[:, :, 0] = self.output_res - keypoints[:, :, 0]
-            orig_keypoints = orig_keypoints[:, ds.flipped_parts['mpii']]
-            orig_keypoints[:, :, 0] = self.input_res - orig_keypoints[:, :, 0]
-        
-        ## set keypoints to 0 when were not visible initially (so heatmap all 0s)
-        for i in range(np.shape(orig_keypoints)[1]):
-            if kptmp[0,i,0] == 0 and kptmp[0,i,1] == 0:
-                keypoints[0,i,0] = 0
-                keypoints[0,i,1] = 0
-                orig_keypoints[0,i,0] = 0
-                orig_keypoints[0,i,1] = 0
         
         ## generate heatmaps on outres
         heatmaps = self.generateHeatmap(keypoints)
         
-        return inp.astype(np.float32), heatmaps.astype(np.float32)
+        return orig_img.astype(np.float32), heatmaps.astype(np.float32),np.array(labels)
 
     def preprocess(self, data):
         # random hue and saturation
@@ -133,11 +92,11 @@ def init(config):
     batchsize = config['train']['batchsize']
     current_path = os.path.dirname(os.path.abspath(__file__))
     sys.path.append(current_path)
-    import data.ref as ds
 
+    ds.init()
 
     train, valid = ds.setup_val_split()
-    dataset = { key: Dataset(config, ds.Lumbar(), data) for key, data in zip( ['train', 'valid'], [train, valid] ) }
+    dataset = { key: Dataset(config, ds, data) for key, data in zip( ['train', 'valid'], [train, valid] ) }
 
     use_data_loader = config['train']['use_data_loader']
 

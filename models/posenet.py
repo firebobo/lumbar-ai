@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 from models.layers import Conv, Hourglass, Pool, Residual
-from task.loss import HeatmapLoss
+from task.loss import HeatmapLoss,LabelLoss
 
 class UnFlatten(nn.Module):
     def forward(self, input):
@@ -39,29 +39,36 @@ class PoseNet(nn.Module):
             Conv(inp_dim, inp_dim, 1, bn=True, relu=True)
         ) for i in range(nstack)] )
         
-        self.outs = nn.ModuleList( [Conv(inp_dim, oup_dim, 1, relu=False, bn=False) for i in range(nstack)] )
+        self.outs_heatmap = nn.ModuleList( [Conv(inp_dim, oup_dim, 1, relu=False, bn=False) for i in range(nstack)] )
+        self.outs_label = nn.ModuleList( [Conv(inp_dim, 1, 1, relu=False, bn=False) for i in range(nstack)] )
         self.merge_features = nn.ModuleList( [Merge(inp_dim, inp_dim) for i in range(nstack-1)] )
         self.merge_preds = nn.ModuleList( [Merge(oup_dim, inp_dim) for i in range(nstack-1)] )
         self.nstack = nstack
         self.heatmapLoss = HeatmapLoss()
+        self.labelLoss = LabelLoss()
 
     def forward(self, imgs):
         ## our posenet
         x = imgs.permute(0, 3, 1, 2) #x of size 1,3,inpdim,inpdim
         x = self.pre(x)
         combined_hm_preds = []
+        combined_lb_preds = []
         for i in range(self.nstack):
             hg = self.hgs[i](x)
             feature = self.features[i](hg)
-            preds = self.outs[i](feature)
+            preds = self.outs_heatmap[i](feature)
+            label_preds = self.outs_label[i](feature)
             combined_hm_preds.append(preds)
+            combined_lb_preds.append(label_preds)
             if i < self.nstack - 1:
                 x = x + self.merge_preds[i](preds) + self.merge_features[i](feature)
-        return torch.stack(combined_hm_preds, 1)
+        return torch.stack(combined_hm_preds, 1),torch.stack(combined_lb_preds, 1)
 
-    def calc_loss(self, combined_hm_preds, heatmaps):
+    def calc_loss(self, combined_hm_preds,combined_lb_preds, heatmaps,labels):
         combined_loss = []
+        labels_loss = []
         for i in range(self.nstack):
             combined_loss.append(self.heatmapLoss(combined_hm_preds[0][:,i], heatmaps))
-        combined_loss = torch.stack(combined_loss, dim=1)
+            labels_loss.append(self.labelLoss(combined_lb_preds[0][:,i], labels))
+        combined_loss = torch.stack(combined_loss+labels_loss, dim=1)
         return combined_loss
