@@ -92,11 +92,10 @@ def init(config):
     batchsize = config['train']['batchsize']
     current_path = os.path.dirname(os.path.abspath(__file__))
     sys.path.append(current_path)
+    train = config['inference']['train_num_eval']
 
-    ds.init()
 
-    train, valid = ds.setup_val_split()
-    dataset = { key: Dataset(config, ds, data) for key, data in zip( ['train', 'valid'], [train, valid] ) }
+    dataset = { key: Dataset(config, ds.Lumbar(), data) for key, data in zip( ['train'], [train] ) }
 
     use_data_loader = config['train']['use_data_loader']
 

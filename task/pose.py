@@ -10,7 +10,7 @@ from torch.nn import DataParallel
 from utils.misc import make_input, make_output, importNet
 
 __config__ = {
-    'data_provider': 'data.MPII.dp',
+    'data_provider': 'data.dp',
     'network': 'models.posenet.PoseNet',
     'inference': {
         'nstack': 8,
@@ -20,7 +20,7 @@ __config__ = {
         'increase': 0,
         'keys': ['imgs'],
         'num_eval': 2958, ## number of val examples used. entire set is 2958
-        'train_num_eval': 300, ## number of train examples tested at test time
+        'train_num_eval': 150, ## number of train examples tested at test time
     },
 
     'train': {
