@@ -28,7 +28,7 @@ __config__ = {
         'batchsize': 16,
         'input_res': 256,
         'output_res': 64,
-        'epoch_num': 100000,
+        'epoch_num': 1000000,
         'data_num': 150,
         'train_iters': 1000,
         'valid_iters': 10,
@@ -38,7 +38,7 @@ __config__ = {
             ['combined_hm_loss', 1],
             ['combined_lb_loss', 1]
         ],
-        'decay_iters': 100000,
+        'decay_iters': 10000,
         'decay_lr': 2e-4,
         'num_workers': 2,
         'use_data_loader': True,
@@ -122,12 +122,11 @@ def make_network(configs):
             loss = 0
             toprint = '\n{}: '.format(batch_id)
             for i,l in enumerate(losses):
-                loss = torch.sum(l)
+                loss += torch.sum(l).cpu()
             my_loss = make_output(loss)
-            my_loss = my_loss.mean()
 
             if my_loss.size == 1:
-                toprint += ' {}: {}'.format(i, format(my_loss.mean(), '.8f'))
+                toprint += ' {}: {}'.format(i, format(my_loss, '.8f'))
             else:
                 toprint += '\n{}'.format(i)
                 for j in my_loss:

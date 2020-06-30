@@ -132,7 +132,6 @@ def init(config):
         loader = loaders[phase].__iter__()
         batch_iterator = iter(loader)
         for e in range(epoch):
-            print('----',e)
             try:
                 imgs, heatmaps, labels =  next(batch_iterator)
                 yield {
