@@ -28,6 +28,8 @@ __config__ = {
         'batchsize': 16,
         'input_res': 256,
         'output_res': 64,
+        'epoch_num': 100000,
+        'data_num': 150,
         'train_iters': 1000,
         'valid_iters': 10,
         'learning_rate': 1e-3,
@@ -40,6 +42,8 @@ __config__ = {
         'decay_lr': 2e-4,
         'num_workers': 2,
         'use_data_loader': True,
+        'train_num_eval': 150,
+        'valid_num_eval': 51
     },
 }
 

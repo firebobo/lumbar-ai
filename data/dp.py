@@ -52,9 +52,10 @@ class GenerateLabelmap():
         return hms
 
 class Dataset(torch.utils.data.Dataset):
-    def __init__(self, config, ds, index,transforms=None):
+    def __init__(self, config, ds,size, index,transforms=None):
         self.input_res = config['train']['input_res']
         self.output_res = config['train']['output_res']
+        self.size = size
         self.generateHeatmap = GenerateHeatmap(self.output_res, config['inference']['num_parts'])
         self.ds = ds
         self.index = index
@@ -64,7 +65,7 @@ class Dataset(torch.utils.data.Dataset):
           self.transforms = transforms
 
     def __len__(self):
-        return self.index
+        return self.size
 
     def __getitem__(self, idx):
         return self.loadImage(idx%self.index)
@@ -110,25 +111,44 @@ def init(config):
     sys.path.append(current_path)
     train = config['inference']['train_num_eval']
 
+    annot_path = r'/annotation.json'
+    train_data_dir = r'/home/dwxt/project/dcm/train'
+    valid_data_dir = r'/home/dwxt/project/dcm/valid'
+    info_name = r'/info.csv'
+    size = config['train']['epoch_num'] * config['train']['data_num']
 
-    dataset = { key: Dataset(config, ds.Lumbar(), data) for key, data in zip( ['train'], [int(train)] ) }
+    train_db = Dataset(config, ds.Lumbar(train_data_dir, annot_path, info_name), size, 150)
+    valid_db = Dataset(config, ds.Lumbar(valid_data_dir, annot_path, info_name), size, 51)
 
-    use_data_loader = config['train']['use_data_loader']
+    dataset = {'train':train_db,'valid':valid_db}
 
     loaders = {}
     for key in dataset:
         loaders[key] = torch.utils.data.DataLoader(dataset[key], batch_size=batchsize, shuffle=True, num_workers=config['train']['num_workers'], pin_memory=False)
 
     def gen(phase):
+        epoch = config['train']['epoch_num']
         batchsize = config['train']['batchsize']
-        batchnum = config['train']['{}_iters'.format(phase)]
         loader = loaders[phase].__iter__()
-        for epoch in range(batchnum):
-            for step, (imgs, heatmaps,labels) in enumerate(loader):
+        batch_iterator = iter(loader)
+        for e in range(epoch):
+            print('----',e)
+            try:
+                imgs, heatmaps, labels =  next(batch_iterator)
                 yield {
                     'imgs': imgs,  # cropped and augmented
                     'heatmaps': heatmaps,  # based on keypoints. 0 if not in img for joint
                     'labels': labels
                 }
+            except StopIteration:
+                batch_iterator = iter(loader)
+                imgs, heatmaps, labelss = next(batch_iterator)
+                yield {
+                    'imgs': imgs,  # cropped and augmented
+                    'heatmaps': heatmaps,  # based on keypoints. 0 if not in img for joint
+                    'labels': labels
+                }
+
+
 
     return lambda key: gen(key)

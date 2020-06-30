@@ -10,14 +10,6 @@ from utils import tcUtils
 def _isArrayLike(obj):
     return hasattr(obj, '__iter__') and hasattr(obj, '__len__')
 
-annot_path = r'/home/dwxt/project/dcm/lumbar_train150_annotation.json'
-img_dir = r'/home/dwxt/project/dcm/lumbar_train150'
-
-info_name = "/info.csv"
-assert os.path.exists(img_dir)
-mpii, num_examples_train, num_examples_val = None, None, None
-
-import cv2
 
 class Lumbar:
     def jsonLoads(self,strs):
@@ -28,16 +20,20 @@ class Lumbar:
         strs = re.sub(r'\\', '"', strs)  # 单引号换成双引号，下文解释
         dict_ = json.loads(strs)
         return dict_  # 原地代替原来的json数据，这里使用列表推导
-    def __init__(self):
+    def __init__(self,data_dir,annot_path,info_path):
+        self.data_dir = data_dir
+        self.annot_path = annot_path
+        self.info_path = info_path
+
         print('loading data...')
         tic = time.time()
         try:
-            result = pd.read_csv(img_dir + info_name)
+            result = pd.read_csv(self.data_dir + self.info_path)
             # result.annotation.apply(self.jsonLoads)
             self.info = result
         except:
             result = self.read_info()
-            result.to_csv(img_dir + info_name,sep=',',header=True)
+            result.to_csv(self.data_dir + self.info_path,sep=',',header=True)
 
             self.info = result
 
@@ -49,7 +45,7 @@ class Lumbar:
     def read_info(self):
         # studyUid,seriesUid,instanceUid,annotation
         annotation_info = pd.DataFrame(columns=('studyUid', 'seriesUid', 'instanceUid', 'annotation'))
-        json_df = pd.read_json(annot_path)
+        json_df = pd.read_json(self.data_dir+self.annot_path)
         for idx in json_df.index:
             studyUid = json_df.loc[idx, "studyUid"]
             seriesUid = json_df.loc[idx, "data"][0]['seriesUid']
@@ -58,7 +54,7 @@ class Lumbar:
             row = pd.Series(
                 {'studyUid': studyUid, 'seriesUid': seriesUid, 'instanceUid': instanceUid, 'annotation': annotation})
             annotation_info = annotation_info.append(row, ignore_index=True)
-        dcm_paths = glob.glob(os.path.join(img_dir, "**", "**.dcm"))
+        dcm_paths = glob.glob(os.path.join(self.data_dir, "**", "**.dcm"))
         # 'studyUid','seriesUid','instanceUid'
         tag_list = ['0020|000d', '0020|000e', '0008|0018']
         dcm_info = pd.DataFrame(columns=('dcmPath', 'studyUid', 'seriesUid', 'instanceUid'))
