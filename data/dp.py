@@ -22,22 +22,21 @@ class GenerateHeatmap():
     def __call__(self, keypoints):
         hms = np.zeros(shape = (self.num_parts, self.output_res, self.output_res), dtype = np.float32)
         sigma = self.sigma
-        for p in keypoints:
-            for idx, pt in enumerate(p):
-                print(p)
-                if pt[0] > 0: 
-                    x, y = int(pt[0]), int(pt[1])
-                    if x<0 or y<0 or x>=self.output_res or y>=self.output_res:
-                        continue
-                    ul = int(x - 3*sigma - 1), int(y - 3*sigma - 1)
-                    br = int(x + 3*sigma + 2), int(y + 3*sigma + 2)
+        for idx, pt in enumerate(keypoints):
+            print(pt)
+            if pt[0] > 0:
+                x, y = int(pt[0]), int(pt[1])
+                if x < 0 or y < 0 or x >= self.output_res or y >= self.output_res:
+                    continue
+                ul = int(x - 3 * sigma - 1), int(y - 3 * sigma - 1)
+                br = int(x + 3 * sigma + 2), int(y + 3 * sigma + 2)
 
-                    c,d = max(0, -ul[0]), min(br[0], self.output_res) - ul[0]
-                    a,b = max(0, -ul[1]), min(br[1], self.output_res) - ul[1]
+                c, d = max(0, -ul[0]), min(br[0], self.output_res) - ul[0]
+                a, b = max(0, -ul[1]), min(br[1], self.output_res) - ul[1]
 
-                    cc,dd = max(0, ul[0]), min(br[0], self.output_res)
-                    aa,bb = max(0, ul[1]), min(br[1], self.output_res)
-                    hms[idx, aa:bb,cc:dd] = np.maximum(hms[idx, aa:bb,cc:dd], self.g[a:b,c:d])
+                cc, dd = max(0, ul[0]), min(br[0], self.output_res)
+                aa, bb = max(0, ul[1]), min(br[1], self.output_res)
+                hms[idx, aa:bb, cc:dd] = np.maximum(hms[idx, aa:bb, cc:dd], self.g[a:b, c:d])
         return hms
 
 class Dataset(torch.utils.data.Dataset):
