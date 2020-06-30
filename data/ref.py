@@ -1,6 +1,4 @@
 import numpy as np
-import h5py
-from skimage.io import imread
 import os 
 import time
 import glob
