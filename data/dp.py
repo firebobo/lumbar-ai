@@ -3,7 +3,10 @@ import sys
 import os
 import torch
 import numpy as np
+from PIL import Image
 import torch.utils.data
+from torchvision.transforms import Compose, Resize, ToTensor
+
 import utils.img
 import data.ref as ds
 
@@ -23,7 +26,6 @@ class GenerateHeatmap():
         hms = np.zeros(shape = (self.num_parts, self.output_res, self.output_res), dtype = np.float32)
         sigma = self.sigma
         for idx, pt in enumerate(keypoints):
-            print(pt)
             if pt[0] > 0:
                 x, y = int(pt[0]), int(pt[1])
                 if x < 0 or y < 0 or x >= self.output_res or y >= self.output_res:
@@ -50,18 +52,22 @@ class GenerateLabelmap():
         return hms
 
 class Dataset(torch.utils.data.Dataset):
-    def __init__(self, config, ds, index):
+    def __init__(self, config, ds, index,transforms=None):
         self.input_res = config['train']['input_res']
         self.output_res = config['train']['output_res']
         self.generateHeatmap = GenerateHeatmap(self.output_res, config['inference']['num_parts'])
         self.ds = ds
         self.index = index
+        if transforms == None:
+          self.transforms = Compose([Resize((self.input_res, self.input_res)), ToTensor()])
+        else:
+          self.transforms = transforms
 
     def __len__(self):
         return self.index
 
     def __getitem__(self, idx):
-        return self.loadImage(idx)
+        return self.loadImage(idx%self.index)
 
     def loadImage(self, idx):
         ds = self.ds
@@ -73,8 +79,8 @@ class Dataset(torch.utils.data.Dataset):
         
         ## generate heatmaps on outres
         heatmaps = self.generateHeatmap(keypoints)
-        
-        return orig_img.astype(np.float32), heatmaps.astype(np.float32),np.array(labels).astype(np.float32)
+        img = self.transforms(Image.fromarray(orig_img))
+        return img, heatmaps.astype(np.float32),np.array(labels).astype(np.float32)
 
     def preprocess(self, data):
         # random hue and saturation

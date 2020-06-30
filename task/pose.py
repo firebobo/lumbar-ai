@@ -15,8 +15,8 @@ __config__ = {
     'inference': {
         'nstack': 8,
         'inp_dim': 256,
-        'oup_dim': 12,
-        'num_parts': 12,
+        'oup_dim': 11,
+        'num_parts': 11,
         'num_class': 7,
         'increase': 0,
         'keys': ['imgs'],
@@ -34,6 +34,7 @@ __config__ = {
         'max_num_people' : 1,
         'loss': [
             ['combined_hm_loss', 1],
+            ['combined_lb_loss', 1]
         ],
         'decay_iters': 100000,
         'decay_lr': 2e-4,
@@ -72,7 +73,7 @@ class Trainer(nn.Module):
             if type(combined_lb_preds)!=list and type(combined_lb_preds)!=tuple:
                 combined_lb_preds = [combined_lb_preds]
             loss = self.calc_loss(**labels, combined_hm_preds=combined_hm_preds,combined_lb_preds=combined_lb_preds)
-            return list(combined_hm_preds) + list([loss])
+            return combined_hm_preds,combined_lb_preds, loss
 
 def make_network(configs):
     train_cfg = configs['train']
@@ -103,32 +104,30 @@ def make_network(configs):
                 inputs[i] = make_input(inputs[i])
             except:
                 pass #for last input, which is a string (id_)
-                
+
         net = config['inference']['net']
         config['batch_id'] = batch_id
-
         net = net.train()
 
         if phase != 'inference':
-            result = net(inputs['imgs'], **{i:inputs[i] for i in inputs if i!='imgs'})
+            combined_hm_preds,combined_lb_preds, all_loss = net(inputs['imgs'], **{i:inputs[i] for i in inputs if i!='imgs'})
             num_loss = len(config['train']['loss'])
 
-            losses = {i[0]: result[-num_loss + idx]*i[1] for idx, i in enumerate(config['train']['loss'])}
-                        
+            losses = [all_loss[idx]*i[1] for idx, i in enumerate(config['train']['loss'])]
+
             loss = 0
             toprint = '\n{}: '.format(batch_id)
-            for i in losses:
-                loss = loss + torch.mean(losses[i])
+            for i,l in enumerate(losses):
+                loss = torch.sum(l)
+            my_loss = make_output(loss)
+            my_loss = my_loss.mean()
 
-                my_loss = make_output( losses[i] )
-                my_loss = my_loss.mean()
-
-                if my_loss.size == 1:
-                    toprint += ' {}: {}'.format(i, format(my_loss.mean(), '.8f'))
-                else:
-                    toprint += '\n{}'.format(i)
-                    for j in my_loss:
-                        toprint += ' {}'.format(format(j.mean(), '.8f'))
+            if my_loss.size == 1:
+                toprint += ' {}: {}'.format(i, format(my_loss.mean(), '.8f'))
+            else:
+                toprint += '\n{}'.format(i)
+                for j in my_loss:
+                    toprint += ' {}'.format(format(j.mean(), '.8f'))
             logger.write(toprint)
             logger.flush()
             

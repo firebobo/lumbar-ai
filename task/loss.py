@@ -20,12 +20,19 @@ class LabelLoss(torch.nn.Module):
         super(LabelLoss, self).__init__()
 
     def forward(self, pred, gt, heatmap):
-        l = 0
+        # print(gt.shape)
+        size = heatmap.shape
+        loss = torch.zeros((gt.shape[0]),dtype=float)
+
+        m = size[2]
+        n = size[3]
         for idx,g in enumerate(gt):
-            a = heatmap[idx]
-            m, n = a.shape
-            index = int(a.argmax())
-            x = int(index / n)
-            y = index % n
-            l += ((pred[:,x,y]-g)**2).sum()
-        return l ## l of dim bsize
+            l = torch.zeros((gt.shape[1]),dtype=float)
+            for jdx,gg in enumerate(g):
+                a = heatmap[idx,jdx]
+                index = int(a.argmax())
+                x = int(index / n)
+                y = index % n
+                l[jdx] = ((pred[idx,:, x, y] - gg) ** 2).mean()
+            loss[idx] = l.mean()
+        return loss ## l of dim bsize

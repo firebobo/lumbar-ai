@@ -2,6 +2,8 @@ import numpy as np
 import os 
 import time
 import glob
+import json
+import re
 import pandas as pd
 from utils import tcUtils
 
@@ -11,16 +13,40 @@ def _isArrayLike(obj):
 annot_path = r'/home/dwxt/project/dcm/lumbar_train150_annotation.json'
 img_dir = r'/home/dwxt/project/dcm/lumbar_train150'
 
+info_name = "/info.csv"
 assert os.path.exists(img_dir)
 mpii, num_examples_train, num_examples_val = None, None, None
 
 import cv2
 
 class Lumbar:
+    def jsonLoads(self,strs):
+        '''strs：传进来的json数据
+           key：字典的键
+        '''
+        strs = re.sub("'", '"', strs)  # 单引号换成双引号，下文解释
+        strs = re.sub(r'\\', '"', strs)  # 单引号换成双引号，下文解释
+        dict_ = json.loads(strs)
+        return dict_  # 原地代替原来的json数据，这里使用列表推导
     def __init__(self):
         print('loading data...')
         tic = time.time()
+        try:
+            result = pd.read_csv(img_dir + info_name)
+            # result.annotation.apply(self.jsonLoads)
+            self.info = result
+        except:
+            result = self.read_info()
+            result.to_csv(img_dir + info_name,sep=',',header=True)
 
+            self.info = result
+
+
+
+
+        print('Done (t={:0.2f}s)'.format(time.time()- tic))
+
+    def read_info(self):
         # studyUid,seriesUid,instanceUid,annotation
         annotation_info = pd.DataFrame(columns=('studyUid', 'seriesUid', 'instanceUid', 'annotation'))
         json_df = pd.read_json(annot_path)
@@ -32,7 +58,6 @@ class Lumbar:
             row = pd.Series(
                 {'studyUid': studyUid, 'seriesUid': seriesUid, 'instanceUid': instanceUid, 'annotation': annotation})
             annotation_info = annotation_info.append(row, ignore_index=True)
-
         dcm_paths = glob.glob(os.path.join(img_dir, "**", "**.dcm"))
         # 'studyUid','seriesUid','instanceUid'
         tag_list = ['0020|000d', '0020|000e', '0008|0018']
@@ -45,16 +70,14 @@ class Lumbar:
                 dcm_info = dcm_info.append(row, ignore_index=True)
             except:
                 continue
-
         result = pd.merge(annotation_info, dcm_info, on=['studyUid', 'seriesUid', 'instanceUid'])
-        self.info = result
-
-        
-        print('Done (t={:0.2f}s)'.format(time.time()- tic))
+        return result
 
     def getAnnots(self,idx):
         row = self.info.rows[idx]
         points = row['annotation']
+        if type(points) is str:
+            points = self.jsonLoads(points)
         kps = []
         for p in points:
             kps.append(p['coord'])
@@ -73,6 +96,8 @@ class Lumbar:
     def get_kps(self,idx):
         row = self.info.loc[idx]
         points = row['annotation']
+        if type(points) is str:
+            points = self.jsonLoads(points)
         kps = {}
         for p in points:
             kps[p['tag']['identification']] = p['coord']
@@ -88,26 +113,25 @@ class Lumbar:
     def get_labels(self,idx):
         row = self.info.loc[idx]
         points = row['annotation']
+        if type(points) is str:
+            points = self.jsonLoads(points)
         lbs = {}
         for p in points:
-            print(p)
+            # print(p)
             disc = None
             if p['tag'].get('vertebra'):
                 disc =  p['tag'].get('vertebra')
             else:
                 disc = p['tag'].get('disc')
             lbs[p['tag']['identification']] = disc
-        labels = []
-
-        for part in parts:
-            lab = np.zeros(7, dtype=int)
+        labels = np.zeros((len(parts),7))
+        for idx,part in enumerate(parts):
             if lbs.get(part):
                 if "-" in part:
                     for par in lbs[part].split(','):
-                        lab[pair_labels[1][par]-1] = 1
+                        labels[idx,pair_labels[1][par]-1] = 1
                 else:
-                    lab[pair_labels[0][lbs[part]] - 1] = 1
-            labels.append(lab)
+                    labels[idx,pair_labels[0][lbs[part]] - 1] = 1
         return labels
 
     
