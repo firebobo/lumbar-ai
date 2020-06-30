@@ -117,12 +117,12 @@ def init(config):
         batchsize = config['train']['batchsize']
         batchnum = config['train']['{}_iters'.format(phase)]
         loader = loaders[phase].__iter__()
-        for i in range(batchnum):
-            imgs, heatmaps = next(loader)
-            yield {
-                'imgs': imgs, #cropped and augmented
-                'heatmaps': heatmaps, #based on keypoints. 0 if not in img for joint
-            }
-
+        for epoch in range(batchnum):
+            for step, (imgs, heatmaps,labels) in enumerate(loader):
+                yield {
+                    'imgs': imgs,  # cropped and augmented
+                    'heatmaps': heatmaps,  # based on keypoints. 0 if not in img for joint
+                    'labels': labels
+                }
 
     return lambda key: gen(key)
