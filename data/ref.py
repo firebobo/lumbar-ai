@@ -75,7 +75,7 @@ class Lumbar:
         points = row['annotation']
         kps = {}
         for p in points:
-            kps[p['tag']['identification']] = p['tag']['coord']
+            kps[p['tag']['identification']] = p['coord']
         key_points = []
         for part in parts:
             key_points.append(kps[part])
@@ -93,7 +93,7 @@ class Lumbar:
 
         for part in parts:
             lab = np.zeros(7, dtype=int)
-            if "-" in lbs[part]:
+            if "-" in part:
                 lab[pair_labels[1][lbs[part]]-1] = 1
             else:
                 lab[pair_labels[0][lbs[part]] - 1] = 1
