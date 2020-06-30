@@ -95,7 +95,7 @@ def init(config):
     train = config['inference']['train_num_eval']
 
 
-    dataset = { key: Dataset(config, ds.Lumbar(), data) for key, data in zip( ['train'], [train] ) }
+    dataset = { key: Dataset(config, ds.Lumbar(), data) for key, data in zip( ['train'], [int(train)] ) }
 
     use_data_loader = config['train']['use_data_loader']
 
