@@ -39,6 +39,16 @@ class GenerateHeatmap():
                 hms[idx, aa:bb, cc:dd] = np.maximum(hms[idx, aa:bb, cc:dd], self.g[a:b, c:d])
         return hms
 
+class GenerateLabelmap():
+    def __init__(self, output_res, num_class):
+        self.output_res = output_res
+        self.num_class = num_class
+
+
+    def __call__(self, keypoints,labels):
+        hms = np.zeros(shape = (self.num_class, self.output_res, self.output_res), dtype = np.float32)
+        return hms
+
 class Dataset(torch.utils.data.Dataset):
     def __init__(self, config, ds, index):
         self.input_res = config['train']['input_res']
@@ -64,7 +74,7 @@ class Dataset(torch.utils.data.Dataset):
         ## generate heatmaps on outres
         heatmaps = self.generateHeatmap(keypoints)
         
-        return orig_img.astype(np.float32), heatmaps.astype(np.float32),np.array(labels)
+        return orig_img.astype(np.float32), heatmaps.astype(np.float32),np.array(labels).astype(np.float32)
 
     def preprocess(self, data):
         # random hue and saturation

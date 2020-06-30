@@ -78,7 +78,10 @@ class Lumbar:
             kps[p['tag']['identification']] = p['coord']
         key_points = []
         for part in parts:
-            key_points.append(kps[part])
+            if kps.get(part):
+                key_points.append(kps[part])
+            else:
+                key_points.append([0,0])
 
         return key_points
 
@@ -98,10 +101,14 @@ class Lumbar:
 
         for part in parts:
             lab = np.zeros(7, dtype=int)
-            if "-" in part:
-                lab[pair_labels[1][lbs[part]]-1] = 1
-            else:
-                lab[pair_labels[0][lbs[part]] - 1] = 1
+            if lbs.get(part):
+                if "-" in part:
+                    for par in lbs[part].split(','):
+                        lab[pair_labels[1][par]-1] = 1
+                else:
+                    lab[pair_labels[0][lbs[part]] - 1] = 1
+            labels.append(lab)
+        return labels
 
     
 # Part reference

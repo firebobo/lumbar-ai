@@ -16,7 +16,7 @@ class Merge(nn.Module):
         return self.conv(x)
     
 class PoseNet(nn.Module):
-    def __init__(self, nstack, inp_dim, oup_dim, bn=False, increase=0, **kwargs):
+    def __init__(self, nstack, inp_dim, oup_dim,num_class=7, bn=False, increase=0, **kwargs):
         super(PoseNet, self).__init__()
         
         self.nstack = nstack
@@ -42,7 +42,7 @@ class PoseNet(nn.Module):
         self.outs_heatmap = nn.ModuleList( [Conv(inp_dim, oup_dim, 1, relu=False, bn=False) for i in range(nstack)] )
         self.outs_label = nn.ModuleList( [nn.Sequential(
             Residual(inp_dim+oup_dim, inp_dim+oup_dim),
-            Conv(inp_dim+oup_dim, oup_dim, 1, relu=False, bn=False)
+            Conv(inp_dim+oup_dim, num_class, 1, relu=False, bn=False)
         ) for i in range(nstack)] )
         self.merge_features = nn.ModuleList( [Merge(inp_dim, inp_dim) for i in range(nstack-1)] )
         self.merge_preds = nn.ModuleList( [Merge(oup_dim, inp_dim) for i in range(nstack-1)] )
@@ -73,6 +73,6 @@ class PoseNet(nn.Module):
         labels_loss = []
         for i in range(self.nstack):
             combined_loss.append(self.heatmapLoss(combined_hm_preds[0][:,i], heatmaps))
-            labels_loss.append(self.labelLoss(combined_lb_preds[0][:,i], labels))
+            labels_loss.append(self.labelLoss(combined_lb_preds[0][:,i], labels,heatmaps))
         combined_loss = torch.stack(combined_loss+labels_loss, dim=1)
         return combined_loss
