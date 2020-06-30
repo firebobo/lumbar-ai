@@ -40,7 +40,10 @@ class PoseNet(nn.Module):
         ) for i in range(nstack)] )
         
         self.outs_heatmap = nn.ModuleList( [Conv(inp_dim, oup_dim, 1, relu=False, bn=False) for i in range(nstack)] )
-        self.outs_label = nn.ModuleList( [Conv(inp_dim, 1, 1, relu=False, bn=False) for i in range(nstack)] )
+        self.outs_label = nn.ModuleList( [nn.Sequential(
+            Residual(inp_dim+oup_dim, inp_dim+oup_dim),
+            Conv(inp_dim+oup_dim, oup_dim, 1, relu=False, bn=False)
+        ) for i in range(nstack)] )
         self.merge_features = nn.ModuleList( [Merge(inp_dim, inp_dim) for i in range(nstack-1)] )
         self.merge_preds = nn.ModuleList( [Merge(oup_dim, inp_dim) for i in range(nstack-1)] )
         self.nstack = nstack
@@ -57,7 +60,8 @@ class PoseNet(nn.Module):
             hg = self.hgs[i](x)
             feature = self.features[i](hg)
             preds = self.outs_heatmap[i](feature)
-            label_preds = self.outs_label[i](feature)
+            feature_preds = torch.cat([feature,preds],0)
+            label_preds = self.outs_label[i](feature_preds)
             combined_hm_preds.append(preds)
             combined_lb_preds.append(label_preds)
             if i < self.nstack - 1:
