@@ -24,6 +24,7 @@ class GenerateHeatmap():
         sigma = self.sigma
         for p in keypoints:
             for idx, pt in enumerate(p):
+                print(p)
                 if pt[0] > 0: 
                     x, y = int(pt[0]), int(pt[1])
                     if x<0 or y<0 or x>=self.output_res or y>=self.output_res:
@@ -48,10 +49,10 @@ class Dataset(torch.utils.data.Dataset):
         self.index = index
 
     def __len__(self):
-        return len(self.index)
+        return self.index
 
     def __getitem__(self, idx):
-        return self.loadImage(self.index[idx % len(self.index)])
+        return self.loadImage(idx)
 
     def loadImage(self, idx):
         ds = self.ds

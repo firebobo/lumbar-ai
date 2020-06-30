@@ -67,15 +67,15 @@ class Lumbar:
         return tcUtils.dicom2array(self.get_path(idx))
 
     def get_path(self,idx):
-        row = self.info.rows[idx]
+        row = self.info.loc[idx]
         return row['dcmPath']
 
     def get_kps(self,idx):
-        row = self.info.rows[idx]
+        row = self.info.loc[idx]
         points = row['annotation']
         kps = {}
         for p in points:
-            kps[p['tag']['identification']] = p['tag']['coord']
+            kps[p['tag']['identification']] = p['coord']
         key_points = []
         for part in parts:
             key_points.append(kps[part])
@@ -83,17 +83,22 @@ class Lumbar:
         return key_points
 
     def get_labels(self,idx):
-        row = self.info.rows[idx]
+        row = self.info.loc[idx]
         points = row['annotation']
         lbs = {}
         for p in points:
-            lbs[p['tag']['identification']] = p['tag']['disc']
-
+            print(p)
+            disc = None
+            if p['tag'].get('vertebra'):
+                disc =  p['tag'].get('vertebra')
+            else:
+                disc = p['tag'].get('disc')
+            lbs[p['tag']['identification']] = disc
         labels = []
 
         for part in parts:
             lab = np.zeros(7, dtype=int)
-            if "-" in lbs[part]:
+            if "-" in part:
                 lab[pair_labels[1][lbs[part]]-1] = 1
             else:
                 lab[pair_labels[0][lbs[part]] - 1] = 1
