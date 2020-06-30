@@ -1,6 +1,4 @@
 import numpy as np
-import h5py
-from skimage.io import imread
 import os 
 import time
 import glob
@@ -10,8 +8,8 @@ from utils import tcUtils
 def _isArrayLike(obj):
     return hasattr(obj, '__iter__') and hasattr(obj, '__len__')
 
-annot_path = r'e:\data\lumbar_train51\lumbar_train51_annotation.json'
-img_dir = r'e:\data\lumbar_train51\train'
+annot_path = r'/home/dwxt/project/dcm/lumbar_train150_annotation.json'
+img_dir = r'/home/dwxt/project/dcm/lumbar_train150'
 
 assert os.path.exists(img_dir)
 mpii, num_examples_train, num_examples_val = None, None, None
