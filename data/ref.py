@@ -8,8 +8,8 @@ from utils import tcUtils
 def _isArrayLike(obj):
     return hasattr(obj, '__iter__') and hasattr(obj, '__len__')
 
-annot_path = r'e:\data\lumbar_train51\lumbar_train51_annotation.json'
-img_dir = r'e:\data\lumbar_train51\train'
+annot_path = r'/home/dwxt/project/dcm/lumbar_train150_annotation.json'
+img_dir = r'/home/dwxt/project/dcm/lumbar_train150'
 
 assert os.path.exists(img_dir)
 mpii, num_examples_train, num_examples_val = None, None, None
@@ -67,11 +67,11 @@ class Lumbar:
         return tcUtils.dicom2array(self.get_path(idx))
 
     def get_path(self,idx):
-        row = self.info.rows[idx]
+        row = self.info.loc[idx]
         return row['dcmPath']
 
     def get_kps(self,idx):
-        row = self.info.rows[idx]
+        row = self.info.loc[idx]
         points = row['annotation']
         kps = {}
         for p in points:
@@ -83,12 +83,17 @@ class Lumbar:
         return key_points
 
     def get_labels(self,idx):
-        row = self.info.rows[idx]
+        row = self.info.loc[idx]
         points = row['annotation']
         lbs = {}
         for p in points:
-            lbs[p['tag']['identification']] = p['tag']['disc']
-
+            print(p)
+            disc = None
+            if p['tag'].get('vertebra'):
+                disc =  p['tag'].get('vertebra')
+            else:
+                disc = p['tag'].get('disc')
+            lbs[p['tag']['identification']] = disc
         labels = []
 
         for part in parts:
