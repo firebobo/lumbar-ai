@@ -5,8 +5,8 @@ import torch
 import numpy as np
 from PIL import Image
 import torch.utils.data
-from torchvision.transforms import Compose, Resize, ToTensor
-
+from torchvision.transforms import Compose, Resize, ToTensor, transforms
+import matplotlib.pyplot as plt
 import utils.img
 import data.ref as ds
 
@@ -41,15 +41,6 @@ class GenerateHeatmap():
                 hms[idx, aa:bb, cc:dd] = np.maximum(hms[idx, aa:bb, cc:dd], self.g[a:b, c:d])
         return hms
 
-class GenerateLabelmap():
-    def __init__(self, output_res, num_class):
-        self.output_res = output_res
-        self.num_class = num_class
-
-
-    def __call__(self, keypoints,labels):
-        hms = np.zeros(shape = (self.num_class, self.output_res, self.output_res), dtype = np.float32)
-        return hms
 
 class Dataset(torch.utils.data.Dataset):
     def __init__(self, config, ds,size, index,transforms=None):
@@ -61,6 +52,7 @@ class Dataset(torch.utils.data.Dataset):
         self.index = index
         if transforms == None:
           self.transforms = Compose([Resize((self.input_res, self.input_res)), ToTensor()])
+          self.show_transforms = Compose([Resize((self.output_res, self.output_res)), ToTensor()])
         else:
           self.transforms = transforms
 
@@ -77,11 +69,38 @@ class Dataset(torch.utils.data.Dataset):
         keypoints = ds.get_kps(idx)
         labels = ds.get_labels(idx)
 
-        
+        height, width = orig_img.shape[0:2]
+        center = keypoints[int(np.random.random()*keypoints.shape[0])]
+        scale = np.random.random()*0.4+0.8
+
+        aug_rot = np.random.random()*.2
+        k_aug_scale = np.array([self.output_res/width,self.output_res/height])
+        k_scale = scale*k_aug_scale
+
+        mat_mask = utils.img.get_transform_mat(center, k_scale, aug_rot)
+
+        mat = cv2.getRotationMatrix2D((center[0],center[1]), aug_rot, scale)
+        inp = cv2.warpAffine(orig_img, mat, (height, width)).astype(np.float32)
         ## generate heatmaps on outres
-        input_res = orig_img.shape[0]
-        heatmaps = self.generateHeatmap(keypoints*(self.output_res/input_res))
-        img = self.transforms(Image.fromarray(orig_img))
+        kpt_change = utils.img.kpt_change(keypoints, mat_mask)
+
+        offset = np.zeros(keypoints.shape)
+        for ind,k in enumerate(kpt_change):
+            offset[ind,0]=k[0] - int(k[0])
+            offset[ind,1]=k[1] - int(k[1])
+
+        labels.column_stack((labels, offset))
+        heatmaps = self.generateHeatmap(kpt_change)
+        img = self.transforms(Image.fromarray(inp))
+        #
+        # show_img = self.show_transforms(Image.fromarray(inp))
+        # unloader = transforms.ToPILImage()
+        # for k in kpt_change:
+        #     show_img[int(k[0]),int(k[1])]=0
+        #
+        #
+        # image = unloader(show_img)
+        # plt.imshow(orig_img)
         return img, heatmaps.astype(np.float32),np.array(labels).astype(np.float32)
 
     def preprocess(self, data):
@@ -152,3 +171,14 @@ def init(config):
 
 
     return lambda key: gen(key)
+
+if __name__ == '__main__':
+    import task.pose
+    config = task.pose.__config__
+    annot_path = r'/annotation.json'
+    train_data_dir = r'E:\data\lumbar_train51\train'
+    info_name = r'/info.csv'
+    size = config['train']['epoch_num'] * config['train']['data_num']
+
+    train_db = Dataset(config, ds.Lumbar(train_data_dir, annot_path, info_name), size, 150)
+    train_db.loadImage(1)

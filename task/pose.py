@@ -19,7 +19,7 @@ __config__ = {
         'inp_dim': 256,
         'oup_dim': 11,
         'num_parts': 11,
-        'num_class': 7,
+        'num_class': 9,
         'increase': 0,
         'keys': ['imgs'],
         'num_eval': 2958, ## number of val examples used. entire set is 2958
@@ -65,10 +65,10 @@ def build_targets(heatmap,labelmap):
                 x = int(index / n)
                 y = index % n
                 targets[idx,jdx,kdx,0] = ggg[x,y]
-                targets[idx, jdx,kdx, 1:3] = [x,y]
+                targets[idx, jdx,kdx, 1:3] = [x+labelmap[idx, jdx, 8, x, y],y+labelmap[idx, jdx, 9, x, y]]
                 y_ = labelmap[idx, jdx, :, x, y]
                 if kdx%2==0:
-                    y_ = labelmap[idx, jdx, 2:, x, y]
+                    y_ = labelmap[idx, jdx, 2:8, x, y]
                     ind = y_.argmax()
                 else:
                     y_ = labelmap[idx, jdx, :2, x, y]

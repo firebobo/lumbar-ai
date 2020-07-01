@@ -31,6 +31,26 @@ def get_transform(center, scale, res, rot=0):
         t = np.dot(t_inv,np.dot(rot_mat,np.dot(t_mat,t)))
     return t
 
+def get_transform_mat(center, scale, rot=0):
+    # Generate transformation matrix
+    c_pre = np.eye(3)
+    c_pre[2,0] = -center[0]
+    c_pre[2,1] = -center[1]
+    c_post = np.eye(3)
+    c_post[2,0] = center[0]*scale[0]
+    c_post[2,1] = center[1]*scale[1]
+
+    s_mat = np.eye(3)
+    s_mat[0,0] = scale[0]
+    s_mat[1,1] = scale[1]
+
+    r_mat = np.eye(3)
+    rot_rad = rot * np.pi / 180
+    sn, cs = np.sin(rot_rad), np.cos(rot_rad)
+    r_mat[0:2,0:2] = [[cs, -sn],[sn, cs]]
+    t = np.dot(c_pre,np.dot(s_mat,np.dot(r_mat,c_post)))
+    return t
+
 def transform(pt, center, scale, res, invert=0, rot=0):
     # Transform pixel location to different reference
     t = get_transform(center, scale, res, rot=rot)
@@ -71,6 +91,16 @@ def kpt_affine(kpt, mat):
     kpt = kpt.reshape(-1, 2)
     return np.dot( np.concatenate((kpt, kpt[:, 0:1]*0+1), axis = 1), mat.T ).reshape(shape)
 
+def kpt_change(kpt, mat):
+    kpt = np.array(kpt)
+    b = np.ones(kpt.shape[0])
+    kpt = np.column_stack((kpt, b))
+    return np.dot(kpt,mat)[:,0:2]
+
 def resize(im, res):
     import cv2
     return np.array([cv2.resize(im[i],res) for i in range(im.shape[0])])
+
+if __name__ == '__main__':
+    print(get_transform([10,10],0.8,[1,1],30))
+    print(get_transform_mat([10,10],[0.8,0.8],30))
