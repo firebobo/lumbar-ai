@@ -67,14 +67,3 @@ class PoseNet(nn.Module):
             if i < self.nstack - 1:
                 x = x + self.merge_preds[i](preds) + self.merge_features[i](feature)
         return torch.stack(combined_hm_preds, 1),torch.stack(combined_lb_preds, 1)
-
-    def calc_loss(self, combined_hm_preds,combined_lb_preds, heatmaps,labels):
-        combined_loss = []
-        labels_loss = []
-        for i in range(self.nstack):
-            combined_loss.append(self.heatmapLoss(combined_hm_preds[0][:,i], heatmaps))
-            labels_loss.append(self.labelLoss(combined_lb_preds[0][:,i], labels,heatmaps))
-
-        combined_loss = torch.stack(combined_loss, dim=1)
-        labels_loss = torch.stack(labels_loss, dim=1)
-        return combined_loss,labels_loss

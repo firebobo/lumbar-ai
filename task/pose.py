@@ -7,13 +7,15 @@ import numpy as np
 from torch import nn
 import os
 from torch.nn import DataParallel
+
+from task.loss import KeypointLoss
 from utils.misc import make_input, make_output, importNet
 
 __config__ = {
     'data_provider': 'data.dp',
     'network': 'models.posenet.PoseNet',
     'inference': {
-        'nstack': 8,
+        'nstack': 4,
         'inp_dim': 256,
         'oup_dim': 11,
         'num_parts': 11,
@@ -47,51 +49,43 @@ __config__ = {
     },
 }
 
-class Trainer(nn.Module):
-    """
-    The wrapper module that will behave differetly for training or testing
-    inference_keys specify the inputs for inference
-    """
-    def __init__(self, model, inference_keys, calc_loss=None):
-        super(Trainer, self).__init__()
-        self.model = model
-        self.keys = inference_keys
-        self.calc_loss = calc_loss
 
-    def forward(self, imgs, **inputs):
-        inps = {}
-        labels = {}
+def build_targets(heatmap,labelmap):
+    # print(gt.shape)
+    size = heatmap.shape
+    targets = np.zeros([size[0],size[1],size[2],4])
 
-        for i in inputs:
-            if i in self.keys:
-                inps[i] = inputs[i]
-            else:
-                labels[i] = inputs[i]
+    m = size[3]
+    n = size[4]
+    for idx,g in enumerate(heatmap):
+        for jdx,gg in enumerate(g):
+            for kdx,ggg in enumerate(gg):
+                a = heatmap[idx,jdx,kdx]
+                index = int(a.argmax())
+                x = int(index / n)
+                y = index % n
+                targets[idx,jdx,kdx,0] = ggg[x,y]
+                targets[idx, jdx,kdx, 1:3] = [x,y]
+                y_ = labelmap[idx, jdx, :, x, y]
+                if kdx%2==0:
+                    y_ = labelmap[idx, jdx, 2:, x, y]
+                    ind = y_.argmax()
+                else:
+                    y_ = labelmap[idx, jdx, :2, x, y]
+                    ind = y_.argmax()
+                targets[idx, jdx,kdx, 3] = ind+1
 
-        if not self.training:
-            return self.model(imgs, **inps)
-        else:
-            combined_hm_preds,combined_lb_preds = self.model(imgs, **inps)
-            if type(combined_hm_preds)!=list and type(combined_hm_preds)!=tuple:
-                combined_hm_preds = [combined_hm_preds]
-            if type(combined_lb_preds)!=list and type(combined_lb_preds)!=tuple:
-                combined_lb_preds = [combined_lb_preds]
-            loss = self.calc_loss(**labels, combined_hm_preds=combined_hm_preds,combined_lb_preds=combined_lb_preds)
-            return combined_hm_preds,combined_lb_preds, loss
-
+        return targets ## l of dim bsize
 def make_network(configs):
     train_cfg = configs['train']
     config = configs['inference']
 
-    def calc_loss(*args, **kwargs):
-        return poseNet.calc_loss(*args, **kwargs)
-    
     ## creating new posenet
     PoseNet = importNet(configs['network'])
     poseNet = PoseNet(**config)
     forward_net = DataParallel(poseNet.cuda())
-    config['net'] = Trainer(forward_net, configs['inference']['keys'], calc_loss)
-    
+    config['net'] = forward_net
+    config['lossLayers'] = KeypointLoss(configs['inference']['num_parts'],configs['inference']['nstack'],configs['inference']['num_class'])
     ## optimizer, experiment setup
     train_cfg['optimizer'] = torch.optim.Adam(filter(lambda p: p.requires_grad,config['net'].parameters()), train_cfg['learning_rate'])
 
@@ -114,18 +108,21 @@ def make_network(configs):
         net = net.train()
 
         if phase != 'inference':
-            combined_hm_preds,combined_lb_preds, all_loss = net(inputs['imgs'], **{i:inputs[i] for i in inputs if i!='imgs'})
+            combined_hm_preds, combined_lb_preds = net(inputs['imgs'])
+            all_loss= config['inference']["lossLayers"](combined_hm_preds,combined_lb_preds,**{i:inputs[i] for i in inputs if i!='imgs'})
             num_loss = len(config['train']['loss'])
 
             losses = [all_loss[idx]*i[1] for idx, i in enumerate(config['train']['loss'])]
 
             loss = 0
+            my_loss=[]
             toprint = '\n{}: '.format(batch_id)
             for i,l in enumerate(losses):
                 loss += torch.sum(l).cpu()
-            my_loss = make_output(loss)
+                my_loss.append(loss)
 
-            if my_loss.size == 1:
+
+            if len(my_loss) == 1:
                 toprint += ' {}: {}'.format(i, format(my_loss, '.8f'))
             else:
                 toprint += '\n{}'.format(i)
@@ -147,11 +144,11 @@ def make_network(configs):
             
             return None
         else:
-            out = {}
             net = net.eval()
-            result = net(**inputs)
-            if type(result)!=list and type(result)!=tuple:
-                result = [result]
-            out['preds'] = [make_output(i) for i in result]
+            combined_hm_preds, combined_lb_preds = net(inputs['imgs'])
+            combined_hm_preds = make_output(combined_hm_preds)
+            combined_lb_preds = make_output(combined_lb_preds)
+            result= build_targets(combined_hm_preds, combined_lb_preds)
+            out = result
             return out
     return make_train

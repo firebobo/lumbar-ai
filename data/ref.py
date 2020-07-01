@@ -97,12 +97,10 @@ class Lumbar:
         kps = {}
         for p in points:
             kps[p['tag']['identification']] = p['coord']
-        key_points = []
-        for part in parts:
+        key_points = np.zeros((len(parts),2))
+        for idx,part in enumerate(parts):
             if kps.get(part):
-                key_points.append(kps[part])
-            else:
-                key_points.append([0,0])
+                key_points[idx] = kps[part]
 
         return key_points
 

@@ -1,233 +1,185 @@
 import cv2
 import torch
-import tqdm
 import os
-import numpy as np
-import h5py
-import copy
 
+from PIL import Image
+from torchvision.transforms import Compose, Resize, ToTensor
+
+from data import ref
 from utils.group import HeatmapParser
 import utils.img
-import data.MPII.ref as ds
-
+import glob
+import json
+import re
+import pandas as pd
+from utils import tcUtils
 parser = HeatmapParser()
+trainPath = r'/home/dwxt/project/dcm/test'
+import argparse
+from datetime import datetime
+from pytz import timezone
+import time
+import torch
+import importlib
 
-def post_process(det, mat_, trainval, c=None, s=None, resolution=None):
-    mat = np.linalg.pinv(np.array(mat_).tolist() + [[0,0,1]])[:2]
-    res = det.shape[1:3]
-    cropped_preds = parser.parse(np.float32([det]))[0]
-    
-    if len(cropped_preds) > 0:
-        cropped_preds[:,:,:2] = utils.img.kpt_affine(cropped_preds[:,:,:2] * 4, mat) #size 1x16x3
-        
-    preds = np.copy(cropped_preds)
-    ##for inverting predictions from input res on cropped to original image
-    if trainval != 'cropped':
-        for j in range(preds.shape[1]):
-            preds[0,j,:2] = utils.img.transform(preds[0,j,:2], c, s, resolution, invert=1)
-    return preds
 
-def inference(img, func, config, c, s):
+def parse_command_line():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-c', '--continue_exp', type=str, help='continue exp')
+    parser.add_argument('-e', '--exp', type=str, default='pose', help='experiments name')
+    parser.add_argument('-m', '--max_iters', type=int, default=250, help='max number of iterations (thousands)')
+    args = parser.parse_args()
+    return args
+
+
+def reload(config):
     """
-    forward pass at test time
-    calls post_process to post process results
+    load or initialize model's parameters by config from config['opt'].continue_exp
+    config['train']['epoch'] records the epoch num
+    config['inference']['net'] is the model
     """
-    
-    height, width = img.shape[0:2]
-    center = (width/2, height/2)
-    scale = max(height, width)/200
-    res = (config['train']['input_res'], config['train']['input_res'])
+    opt = config['opt']
 
-    mat_ = utils.img.get_transform(center, scale, res)[:2]
-    inp = img/255
+    if opt.continue_exp:
+        resume = os.path.join('exp', opt.continue_exp)
+        resume_file = os.path.join(resume, 'checkpoint.pt')
+        if os.path.isfile(resume_file):
+            print("=> loading checkpoint '{}'".format(resume))
+            checkpoint = torch.load(resume_file)
 
-    def array2dict(tmp):
-        return {
-            'det': tmp[0][:,:,:16],
-        }
+            config['inference']['net'].load_state_dict(checkpoint['state_dict'])
+            config['train']['optimizer'].load_state_dict(checkpoint['optimizer'])
+            config['train']['epoch'] = checkpoint['epoch']
+            print("=> loaded checkpoint '{}' (epoch {})"
+                  .format(resume, checkpoint['epoch']))
+        else:
+            print("=> no checkpoint found at '{}'".format(resume))
+            exit(0)
 
-    tmp1 = array2dict(func([inp]))
-    tmp2 = array2dict(func([inp[:,::-1]]))
+    if 'epoch' not in config['train']:
+        config['train']['epoch'] = 0
 
-    tmp = {}
-    for ii in tmp1:
-        tmp[ii] = np.concatenate((tmp1[ii], tmp2[ii]),axis=0)
 
-    det = tmp['det'][0, -1] + tmp['det'][1, -1, :, :, ::-1][ds.flipped_parts['mpii']]
-    if det is None:
-        return [], []
-    det = det/2
-
-    det = np.minimum(det, 1)
-    
-    return post_process(det, mat_, 'valid', c, s, res)
-
-def mpii_eval(pred, gt, normalizing, num_train, bound=0.5):
+def save_checkpoint(state, is_best, filename='checkpoint.pt'):
     """
-    Use PCK with threshold of .5 of normalized distance (presumably head size)
+    from pytorch/examples
     """
+    basename = dirname(filename)
+    if not os.path.exists(basename):
+        os.makedirs(basename)
+    torch.save(state, filename)
+    if is_best:
+        shutil.copyfile(filename, 'model_best.pt')
 
-    correct = {'all': {'total': 0, 'ankle': 0, 'knee': 0, 'hip': 0, 'pelvis': 0, 
-               'thorax': 0, 'neck': 0, 'head': 0, 'wrist': 0, 'elbow': 0, 
-               'shoulder': 0},
-               'visible': {'total': 0, 'ankle': 0, 'knee': 0, 'hip': 0, 'pelvis': 0, 
-               'thorax': 0, 'neck': 0, 'head': 0, 'wrist': 0, 'elbow': 0, 
-               'shoulder': 0},
-               'not visible': {'total': 0, 'ankle': 0, 'knee': 0, 'hip': 0, 'pelvis': 0, 
-               'thorax': 0, 'neck': 0, 'head': 0, 'wrist': 0, 'elbow': 0, 
-               'shoulder': 0}}
-    count = copy.deepcopy(correct)
-    correct_train = copy.deepcopy(correct)
-    count_train = copy.deepcopy(correct)
-    idx = 0
-    for p, g, normalize in zip(pred, gt, normalizing):
-        for j in range(g.shape[1]):
-            vis = 'visible'
-            if g[0,j,0] == 0: ## not in picture!
-                continue
-            if g[0,j,2] == 0:
-                vis = 'not visible'
-            joint = 'ankle'
-            if j==1 or j==4:
-                joint = 'knee'
-            elif j==2 or j==3:
-                joint = 'hip'
-            elif j==6:
-                joint = 'pelvis'
-            elif j==7:
-                joint = 'thorax'
-            elif j==8:
-                joint = 'neck'
-            elif j==9:
-                joint = 'head'
-            elif j==10 or j==15:
-                joint = 'wrist'
-            elif j==11 or j==14:
-                joint = 'elbow'
-            elif j==12 or j==13:
-                joint = 'shoulder'
 
-            if idx >= num_train:
-                count['all']['total'] += 1
-                count['all'][joint] += 1
-                count[vis]['total'] += 1
-                count[vis][joint] += 1
-            else:
-                count_train['all']['total'] += 1
-                count_train['all'][joint] += 1    
-                count_train[vis]['total'] += 1
-                count_train[vis][joint] += 1    
-            error = np.linalg.norm(p[0]['keypoints'][j,:2]-g[0,j,:2]) / normalize
-            if idx >= num_train:
-                if bound > error:
-                    correct['all']['total'] += 1
-                    correct['all'][joint] += 1
-                    correct[vis]['total'] += 1
-                    correct[vis][joint] += 1
-            else:
-                if bound > error:
-                    correct_train['all']['total'] += 1
-                    correct_train['all'][joint] += 1
-                    correct_train[vis]['total'] += 1
-                    correct_train[vis][joint] += 1  
-        idx += 1
-    
-    ## breakdown by validation set / training set
-    for k in correct:
-        print(k, ':')
-        for key in correct[k]:
-            print('Val PCK @,', bound, ',', key, ':', round(correct[k][key] / max(count[k][key],1), 3), ', count:', count[k][key])
-            print('Tra PCK @,', bound, ',', key, ':', round(correct_train[k][key] / max(count_train[k][key],1), 3), ', count:', count_train[k][key])
-        print('\n')
-            
-def get_img(config, num_eval=2958, num_train=300):
-    '''
-    Load validation and training images
-    '''
+def save(config):
+    resume = os.path.join('exp', config['opt'].exp)
+    if config['opt'].exp == 'pose' and config['opt'].continue_exp is not None:
+        resume = os.path.join('exp', config['opt'].continue_exp)
+    resume_file = os.path.join(resume, 'checkpoint.pt')
+
+    save_checkpoint({
+        'state_dict': config['inference']['net'].state_dict(),
+        'optimizer': config['train']['optimizer'].state_dict(),
+        'epoch': config['train']['epoch'],
+    }, False, filename=resume_file)
+    print('=> save checkpoint')
+
+def init():
+    """
+    task.__config__ contains the variables that control the training and testing
+    make_network builds a function which can do forward and backward propagation
+    """
+    opt = parse_command_line()
+    task = importlib.import_module('task.pose')
+    exp_path = os.path.join('exp', opt.exp)
+
+    current_time = datetime.now().strftime('%b%d_%H-%M-%S')
+
+    config = task.__config__
+    try:
+        os.makedirs(exp_path)
+    except FileExistsError:
+        pass
+
+    config['opt'] = opt
+    config['data_provider'] = importlib.import_module(config['data_provider'])
+
+    func = task.make_network(config)
+    reload(config)
+    return func, config
+
+
+def test():
+    run_func, config = init()
     input_res = config['train']['input_res']
     output_res = config['train']['output_res']
-    val_f = h5py.File(os.path.join(ds.annot_dir, 'valid.h5'), 'r')
-    
-    tr = tqdm.tqdm( range(0, num_train), total = num_train )
-    ## training
-    train_f = h5py.File(os.path.join(ds.annot_dir, 'train.h5') ,'r')
-    for i in tr:
-        path_t = '%s/%s' % (ds.img_dir, train_f['imgname'][i].decode('UTF-8'))        
-        
-        ## img
-        orig_img = cv2.imread(path_t)[:,:,::-1]
-        c = train_f['center'][i]
-        s = train_f['scale'][i]
-        im = utils.img.crop(orig_img, c, s, (input_res, input_res))
-        
-        ## kp
-        kp = train_f['part'][i]
-        vis = train_f['visible'][i]
-        kp2 = np.insert(kp, 2, vis, axis=1)
-        kps = np.zeros((1, 16, 3))
-        kps[0] = kp2
-        
-        ## normalize (to make errors more fair on high pixel imgs)
-        n = train_f['normalize'][i]
-        
-        yield kps, im, c, s, n
-                
-    
-    tr2 = tqdm.tqdm( range(0, num_eval), total = num_eval )
-    ## validation
-    for i in tr2:
-        path_t = '%s/%s' % (ds.img_dir, val_f['imgname'][i].decode('UTF-8')) 
-        
-        ## img
-        orig_img = cv2.imread(path_t)[:,:,::-1]
-        c = val_f['center'][i]
-        s = val_f['scale'][i]
-        im = utils.img.crop(orig_img, c, s, (input_res, input_res))
-        
-        ## kp
-        kp = val_f['part'][i]
-        vis = val_f['visible'][i]
-        kp2 = np.insert(kp, 2, vis, axis=1)
-        kps = np.zeros((1, 16, 3))
-        kps[0] = kp2
-        
-        ## normalize (to make errors more fair on high pixel imgs)
-        n = val_f['normalize'][i]
-        
-        yield kps, im, c, s, n
-    
+    nstack = config['inference']['nstack']
+    transforms = Compose([Resize((input_res, input_res)), ToTensor()])
+    print('loading data...')
+    tic = time.time()
+    info_path = '/test_info.csv'
+    try:
+        info_result = pd.read_csv(trainPath + info_path)
+        # result.annotation.apply(self.jsonLoads)
+    except:
+        info_result = read_info()
+        info_result.to_csv(trainPath + info_path, sep=',', header=True)
+    uid = info_result.groupby(['studyUid', 'seriesUid'])
+    result_list = []
+    for key,group in uid:
+        group_count = group.shape[0]
+        if group_count >5:
+            frame = info_result.loc[info_result['instanceUid']==(key[1]+'.'+str(int(group_count/2)))]
+            if frame.shape[0]==0:
+                continue
+            frame_info = [frame['dcmPath'].values[0],frame['instanceUid'].values[0],frame['seriesUid'].values[0],frame['studyUid'].values[0],]
+            path = frame_info[0]
+            orig_img=tcUtils.dicom2array(path)
+            input_r = orig_img.shape[0]
+            img = transforms(Image.fromarray(orig_img)).unsqueeze(0)
+            out = run_func(key,config,"inference",**{'imgs':img})
+            for o in out:
+                data = {}
+                data['seriesUid'] = frame_info[2]
+                data['instanceUid'] = frame_info[1]
+                annotations = []
 
-def main():
-    from train import init
-    func, config = init()
+                a_point = []
+                conf = 0
+                for oid,oo in enumerate(o[nstack-1]):
+                    p_data={}
+                    p_data['coord']= [int(oo[1]*input_r/output_res),int(oo[2]*input_r/output_res)]
+                    p_data['tag'] = {'identification':ref.parts[oid],'disc':'v'+str(int(oo[3]))}
+                    a_point.append(p_data)
+                    conf += oo[0]
+                a_data={'point':a_point}
+                annotations.append(a_data)
+                data['annotations'] = annotations
+                result = {"studyUid":frame_info[3],"data":data}
+                print(conf)
+                if(conf>3):
+                    result_list.append(result)
+    print(result_list)
+    print('Done (t={:0.2f}s)'.format(time.time() - tic))
 
-    def runner(imgs):
-        return func(0, config, 'inference', imgs=torch.Tensor(np.float32(imgs)))['preds']
 
-    def do(img, c, s):
-        ans = inference(img, runner, config, c, s)
-        if len(ans) > 0:
-            ans = ans[:,:,:3]
 
-        ## ans has shape N,16,3 (num preds, joints, x/y/visible)
-        pred = []
-        for i in range(ans.shape[0]):
-            pred.append({'keypoints': ans[i,:,:]})
-        return pred
 
-    gts = []
-    preds = []
-    normalizing = []
-    
-    num_eval = config['inference']['num_eval']
-    num_train = config['inference']['train_num_eval']
-    for anns, img, c, s, n in get_img(config, num_eval, num_train):
-        gts.append(anns)
-        pred = do(img, c, s)
-        preds.append(pred)
-        normalizing.append(n)
-
-    mpii_eval(preds, gts, normalizing, num_train)
+def read_info():
+    dcm_paths = glob.glob(os.path.join(trainPath, "**", "**.dcm"))
+    # 'studyUid','seriesUid','instanceUid'
+    tag_list = ['0020|000d', '0020|000e', '0008|0018']
+    dcm_info = pd.DataFrame(columns=('dcmPath', 'studyUid', 'seriesUid', 'instanceUid'))
+    for dcm_path in dcm_paths:
+        try:
+            studyUid, seriesUid, instanceUid = tcUtils.dicom_metainfo(dcm_path, tag_list)
+            row = pd.Series(
+                {'dcmPath': dcm_path, 'studyUid': studyUid, 'seriesUid': seriesUid, 'instanceUid': instanceUid})
+            dcm_info = dcm_info.append(row, ignore_index=True)
+        except:
+            continue
+    return dcm_info
 
 if __name__ == '__main__':
-    main()
+    test()

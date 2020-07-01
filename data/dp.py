@@ -79,7 +79,8 @@ class Dataset(torch.utils.data.Dataset):
 
         
         ## generate heatmaps on outres
-        heatmaps = self.generateHeatmap(keypoints)
+        input_res = orig_img.shape[0]
+        heatmaps = self.generateHeatmap(keypoints*(self.output_res/input_res))
         img = self.transforms(Image.fromarray(orig_img))
         return img, heatmaps.astype(np.float32),np.array(labels).astype(np.float32)
 

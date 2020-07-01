@@ -36,3 +36,33 @@ class LabelLoss(torch.nn.Module):
                 l[jdx] = ((pred[idx,:, x, y] - gg) ** 2).mean()
             loss[idx] = l.mean()
         return loss ## l of dim bsize
+
+
+class KeypointLoss(torch.nn.Module):
+    """
+    The wrapper module that will behave differetly for training or testing
+    inference_keys specify the inputs for inference
+    """
+
+    def __init__(self, inference_keys, nstack, nclass):
+        super(KeypointLoss, self).__init__()
+        self.keys = inference_keys
+        self.nstack = nstack
+        self.n_class = nclass
+        self.heatmapLoss = HeatmapLoss()
+        self.labelLoss = LabelLoss()
+
+    def forward(self, combined_hm_preds, combined_lb_preds, **gt):
+        loss = self.calc_loss(combined_hm_preds=combined_hm_preds, combined_lb_preds=combined_lb_preds, **gt)
+        return loss
+
+    def calc_loss(self, combined_hm_preds, combined_lb_preds, heatmaps, labels):
+        combined_loss = []
+        labels_loss = []
+        for i in range(self.nstack):
+            combined_loss.append(self.heatmapLoss(combined_hm_preds[:, i], heatmaps))
+            labels_loss.append(self.labelLoss(combined_lb_preds[:, i], labels, heatmaps))
+
+        combined_loss = torch.stack(combined_loss, dim=1)
+        labels_loss = torch.stack(labels_loss, dim=1)
+        return combined_loss, labels_loss
