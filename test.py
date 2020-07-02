@@ -14,7 +14,7 @@ import re
 import pandas as pd
 from utils import tcUtils
 parser = HeatmapParser()
-trainPath = r'/home/dwxt/project/dcm/test'
+
 import argparse
 from datetime import datetime
 from pytz import timezone
@@ -111,6 +111,7 @@ def init():
 
 
 def test():
+    trainPath = r'/home/dwxt/project/dcm/train'
     run_func, config = init()
     input_res = config['train']['input_res']
     output_res = config['train']['output_res']
@@ -123,7 +124,7 @@ def test():
         info_result = pd.read_csv(trainPath + info_path)
         # result.annotation.apply(self.jsonLoads)
     except:
-        info_result = read_info()
+        info_result = read_info(trainPath)
         info_result.to_csv(trainPath + info_path, sep=',', header=True)
     uid = info_result.groupby(['studyUid', 'seriesUid'])
     result_list = []
@@ -156,12 +157,19 @@ def test():
                         p_data['tag'] = {'identification': ref.parts[oid], 'vertebra': 'v' + str(int(oo[3]))}
                     a_point.append(p_data)
                     conf += oo[0]
+                dis = 0
+                for ind,p in enumerate(a_point):
+                    if ind<len(a_point)-1:
+                        dis += ((p['coord'][0]-a_point[ind+1]['coord'][0])**2+(p['coord'][1]-a_point[ind+1]['coord'][1])**2)**.5
                 a_data={'point':a_point}
                 annotations.append(a_data)
                 data['annotation'] = annotations
-                result = {"studyUid":frame_info[3],"data":data}
+                result = {"studyUid":frame_info[3],"data":[data]}
                 print(conf)
-                if(conf>3):
+                dis_ = ((a_point[0]['coord'][0] - a_point[-1]['coord'][0]) ** 2 + (
+                            a_point[0]['coord'][1] - a_point[-1]['coord'][1]) ** 2) ** .5
+                print(dis,dis_)
+                if(dis< 2*dis_):
                     result_list.append(result)
     print(result_list)
     print('Done (t={:0.2f}s)'.format(time.time() - tic))
@@ -169,7 +177,7 @@ def test():
 
 
 
-def read_info():
+def read_info(trainPath):
     dcm_paths = glob.glob(os.path.join(trainPath, "**", "**.dcm"))
     # 'studyUid','seriesUid','instanceUid'
     tag_list = ['0020|000d', '0020|000e', '0008|0018']

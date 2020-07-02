@@ -64,7 +64,7 @@ def build_targets(heatmap,labelmap):
                 index = int(a.argmax())
                 x = int(index / n)
                 y = index % n
-                targets[idx,jdx,kdx,0] = ggg[x,y]
+                targets[idx,jdx,kdx,0] = a[x,y]
                 targets[idx, jdx,kdx, 1:3] = [x+labelmap[idx, jdx, 7, x, y],y+labelmap[idx, jdx, 8, x, y]]
                 y_ = labelmap[idx, jdx, :, x, y]
                 if kdx%2==0:
@@ -129,7 +129,7 @@ def make_network(configs):
                     if batch_id%100==0:
                         toprint += ' \n{}'.format(format(str(j)))
                     else:
-                        toprint += ' {}'.format(format(j.mean(),'.8f'))
+                        toprint += ' {}'.format(format(j.sum(),'.8f'))
             logger.write(toprint)
             logger.flush()
             
@@ -138,7 +138,8 @@ def make_network(configs):
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
-            
+            elif phase == 'valid':
+                result = build_targets(combined_hm_preds, combined_lb_preds)
             if batch_id == config['train']['decay_iters']:
                 ## decrease the learning rate after decay # iterations
                 for param_group in optimizer.param_groups:

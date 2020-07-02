@@ -43,13 +43,14 @@ class GenerateHeatmap():
 
 
 class Dataset(torch.utils.data.Dataset):
-    def __init__(self, config, ds,size, index):
+    def __init__(self, config, ds,size, index,is_deal):
         self.input_res = config['train']['input_res']
         self.output_res = config['train']['output_res']
         self.size = size
         self.generateHeatmap = GenerateHeatmap(self.output_res, config['inference']['num_parts'])
         self.ds = ds
         self.index = index
+        self.is_deal = is_deal
 
 
     def __len__(self):
@@ -67,25 +68,27 @@ class Dataset(torch.utils.data.Dataset):
 
         width,height = orig_img.shape[0:2]
 
-        inp_img = cv2.resize(orig_img, (self.input_res,self.input_res))
+
         img_aug_scale = np.array([self.input_res/height,self.input_res/width])
         mat_mask_pre = utils.img.get_transform_mat([0,0], img_aug_scale, 0)
         kpt_change_pre = utils.img.kpt_change(keypoints, mat_mask_pre)
 
         center = kpt_change_pre[int(np.random.random()*keypoints.shape[0])]
+        inp_img = cv2.resize(orig_img, (self.input_res, self.input_res))
+        if self.is_deal:
+            scale = np.random.random() * 0.4 + 0.8
 
-        scale = np.random.random()*0.4+0.8
+            aug_rot = np.random.random() * 20
 
-        aug_rot = np.random.random()*20
-        k_aug_scale = np.array([self.output_res/self.input_res,self.output_res/self.input_res])
+            mat = cv2.getRotationMatrix2D((center[1], center[0]), aug_rot, scale)
 
-        k_scale = scale*k_aug_scale
-        # print(center,scale,aug_rot)
-        mat = cv2.getRotationMatrix2D((center[1],center[0]), aug_rot, scale)
-        inp = cv2.warpAffine(inp_img, mat, (self.input_res,self.input_res)).astype(np.float32)
-        ## generate heatmaps on outres
+            inp = cv2.warpAffine(inp_img, mat, (self.input_res, self.input_res)).astype(np.float32)
+            ## generate heatmaps on outres
 
-        kpt_affine = utils.img.kpt_affine(kpt_change_pre, mat)
+            kpt_affine = utils.img.kpt_affine(kpt_change_pre, mat)
+        else:
+            kpt_affine = kpt_change_pre
+            inp = inp_img.astype(np.float32)
 
         mat_post = cv2.getRotationMatrix2D((0,0), 0, self.output_res/self.input_res)
         kpt_change = utils.img.kpt_affine(kpt_affine, mat_post)
@@ -95,14 +98,17 @@ class Dataset(torch.utils.data.Dataset):
             offset[ind,0]=k[0] - int(k[0])
             offset[ind,1]=k[1] - int(k[1])
         # print(offset)
-        labels = np.column_stack((labels, offset))
+        kpt_int = kpt_change.astype(np.int)[:,[1,0]]
+        labels = np.column_stack((labels, offset, kpt_int))
         heatmaps = self.generateHeatmap(kpt_change)
 
         # show_inp = cv2.resize(inp,(self.output_res,self.output_res))
-        # for k in kpt_change:
+        # for ind,k in enumerate(kpt_change):
         #     show_inp[int(k[1]),int(k[0])]=255
-
-        # plt.imshow(inp)
+        #     plt.imshow(heatmaps[ind])
+        #     plt.show()
+        #
+        # # plt.imshow(inp)
         # plt.imshow(show_inp)
         # plt.show()
         # for k in kpt_change_pre:
@@ -146,8 +152,8 @@ def init(config):
     info_name = r'/info.csv'
     size = config['train']['epoch_num'] * config['train']['data_num']
 
-    train_db = Dataset(config, ds.Lumbar(train_data_dir, annot_path, info_name), size, 150)
-    valid_db = Dataset(config, ds.Lumbar(valid_data_dir, annot_path, info_name), size, 51)
+    train_db = Dataset(config, ds.Lumbar(train_data_dir, annot_path, info_name), size, 150,True)
+    valid_db = Dataset(config, ds.Lumbar(valid_data_dir, annot_path, info_name), size, 51,False)
 
     dataset = {'train':train_db,'valid':valid_db}
 
@@ -189,5 +195,5 @@ if __name__ == '__main__':
     info_name = r'/info.csv'
     size = config['train']['epoch_num'] * config['train']['data_num']
 
-    train_db = Dataset(config, ds.Lumbar(train_data_dir, annot_path, info_name), size, 150)
+    train_db = Dataset(config, ds.Lumbar(train_data_dir, annot_path, info_name), size, 150,False)
     train_db.loadImage(1)
