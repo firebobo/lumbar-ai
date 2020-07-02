@@ -16,7 +16,7 @@ class Merge(nn.Module):
         return self.conv(x)
     
 class PoseNet(nn.Module):
-    def __init__(self, nstack, inp_dim, oup_dim,num_class=7, bn=False, increase=0, **kwargs):
+    def __init__(self, nstack, inp_dim, oup_dim,num_class=9, bn=False, increase=0, **kwargs):
         super(PoseNet, self).__init__()
         
         self.nstack = nstack
@@ -47,8 +47,6 @@ class PoseNet(nn.Module):
         self.merge_features = nn.ModuleList( [Merge(inp_dim, inp_dim) for i in range(nstack-1)] )
         self.merge_preds = nn.ModuleList( [Merge(oup_dim, inp_dim) for i in range(nstack-1)] )
         self.nstack = nstack
-        self.heatmapLoss = HeatmapLoss()
-        self.labelLoss = LabelLoss()
 
     def forward(self, imgs):
         ## our posenet

@@ -81,15 +81,19 @@ def crop(img, center, scale, res, rot=0):
 
     return scipy.misc.imresize(new_img, res)
 
+def crop_center(img, center, scale):
+    height,width = img.shape
+
+
 def inv_mat(mat):
     ans = np.linalg.pinv(np.array(mat).tolist() + [[0,0,1]])
     return ans[:2]
 
 def kpt_affine(kpt, mat):
     kpt = np.array(kpt)
-    shape = kpt.shape
-    kpt = kpt.reshape(-1, 2)
-    return np.dot( np.concatenate((kpt, kpt[:, 0:1]*0+1), axis = 1), mat.T ).reshape(shape)
+    b = np.ones(kpt.shape[0])
+    kpt = np.column_stack((kpt, b))
+    return np.dot(mat,kpt.T).T
 
 def kpt_change(kpt, mat):
     kpt = np.array(kpt)

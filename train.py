@@ -42,7 +42,6 @@ def reload(config):
                   .format(resume, checkpoint['epoch']))
         else:
             print("=> no checkpoint found at '{}'".format(resume))
-            exit(0)
 
     if 'epoch' not in config['train']:
         config['train']['epoch'] = 0

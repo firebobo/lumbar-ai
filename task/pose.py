@@ -65,10 +65,10 @@ def build_targets(heatmap,labelmap):
                 x = int(index / n)
                 y = index % n
                 targets[idx,jdx,kdx,0] = ggg[x,y]
-                targets[idx, jdx,kdx, 1:3] = [x+labelmap[idx, jdx, 8, x, y],y+labelmap[idx, jdx, 9, x, y]]
+                targets[idx, jdx,kdx, 1:3] = [x+labelmap[idx, jdx, 7, x, y],y+labelmap[idx, jdx, 8, x, y]]
                 y_ = labelmap[idx, jdx, :, x, y]
                 if kdx%2==0:
-                    y_ = labelmap[idx, jdx, 2:8, x, y]
+                    y_ = labelmap[idx, jdx, 2:7, x, y]
                     ind = y_.argmax()
                 else:
                     y_ = labelmap[idx, jdx, :2, x, y]
@@ -119,15 +119,17 @@ def make_network(configs):
             toprint = '\n{}: '.format(batch_id)
             for i,l in enumerate(losses):
                 loss += torch.sum(l).cpu()
-                my_loss.append(loss)
+                my_loss.append(l)
 
 
             if len(my_loss) == 1:
                 toprint += ' {}: {}'.format(i, format(my_loss, '.8f'))
             else:
-                toprint += '\n{}'.format(i)
                 for j in my_loss:
-                    toprint += ' {}'.format(format(j.mean(), '.8f'))
+                    if batch_id%100==0:
+                        toprint += ' \n{}'.format(format(str(j)))
+                    else:
+                        toprint += ' {}'.format(format(j.mean(),'.8f'))
             logger.write(toprint)
             logger.flush()
             

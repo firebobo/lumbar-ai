@@ -43,18 +43,14 @@ class GenerateHeatmap():
 
 
 class Dataset(torch.utils.data.Dataset):
-    def __init__(self, config, ds,size, index,transforms=None):
+    def __init__(self, config, ds,size, index):
         self.input_res = config['train']['input_res']
         self.output_res = config['train']['output_res']
         self.size = size
         self.generateHeatmap = GenerateHeatmap(self.output_res, config['inference']['num_parts'])
         self.ds = ds
         self.index = index
-        if transforms == None:
-          self.transforms = Compose([Resize((self.input_res, self.input_res)), ToTensor()])
-          self.show_transforms = Compose([Resize((self.output_res, self.output_res)), ToTensor()])
-        else:
-          self.transforms = transforms
+
 
     def __len__(self):
         return self.size
@@ -69,39 +65,52 @@ class Dataset(torch.utils.data.Dataset):
         keypoints = ds.get_kps(idx)
         labels = ds.get_labels(idx)
 
-        height, width = orig_img.shape[0:2]
-        center = keypoints[int(np.random.random()*keypoints.shape[0])]
+        width,height = orig_img.shape[0:2]
+
+        inp_img = cv2.resize(orig_img, (self.input_res,self.input_res))
+        img_aug_scale = np.array([self.input_res/height,self.input_res/width])
+        mat_mask_pre = utils.img.get_transform_mat([0,0], img_aug_scale, 0)
+        kpt_change_pre = utils.img.kpt_change(keypoints, mat_mask_pre)
+
+        center = kpt_change_pre[int(np.random.random()*keypoints.shape[0])]
+
         scale = np.random.random()*0.4+0.8
 
-        aug_rot = np.random.random()*.2
-        k_aug_scale = np.array([self.output_res/width,self.output_res/height])
+        aug_rot = np.random.random()*20
+        k_aug_scale = np.array([self.output_res/self.input_res,self.output_res/self.input_res])
+
         k_scale = scale*k_aug_scale
-
-        mat_mask = utils.img.get_transform_mat(center, k_scale, aug_rot)
-
-        mat = cv2.getRotationMatrix2D((center[0],center[1]), aug_rot, scale)
-        inp = cv2.warpAffine(orig_img, mat, (height, width)).astype(np.float32)
+        # print(center,scale,aug_rot)
+        mat = cv2.getRotationMatrix2D((center[1],center[0]), aug_rot, scale)
+        inp = cv2.warpAffine(inp_img, mat, (self.input_res,self.input_res)).astype(np.float32)
         ## generate heatmaps on outres
-        kpt_change = utils.img.kpt_change(keypoints, mat_mask)
+
+        kpt_affine = utils.img.kpt_affine(kpt_change_pre, mat)
+
+        mat_post = cv2.getRotationMatrix2D((0,0), 0, self.output_res/self.input_res)
+        kpt_change = utils.img.kpt_affine(kpt_affine, mat_post)
 
         offset = np.zeros(keypoints.shape)
         for ind,k in enumerate(kpt_change):
             offset[ind,0]=k[0] - int(k[0])
             offset[ind,1]=k[1] - int(k[1])
-
-        labels.column_stack((labels, offset))
+        # print(offset)
+        labels = np.column_stack((labels, offset))
         heatmaps = self.generateHeatmap(kpt_change)
-        img = self.transforms(Image.fromarray(inp))
-        #
-        # show_img = self.show_transforms(Image.fromarray(inp))
-        # unloader = transforms.ToPILImage()
+
+        # show_inp = cv2.resize(inp,(self.output_res,self.output_res))
         # for k in kpt_change:
-        #     show_img[int(k[0]),int(k[1])]=0
-        #
-        #
-        # image = unloader(show_img)
-        # plt.imshow(orig_img)
-        return img, heatmaps.astype(np.float32),np.array(labels).astype(np.float32)
+        #     show_inp[int(k[1]),int(k[0])]=255
+
+        # plt.imshow(inp)
+        # plt.imshow(show_inp)
+        # plt.show()
+        # for k in kpt_change_pre:
+        #     inp_img[int(k[1]),int(k[0])]=255
+        # plt.imshow(inp_img)
+        # # plt.imshow(show_inp)
+        # plt.show()
+        return inp[np.newaxis,:,:], heatmaps.astype(np.float32),np.array(labels).astype(np.float32)
 
     def preprocess(self, data):
         # random hue and saturation

@@ -150,12 +150,15 @@ def test():
                 for oid,oo in enumerate(o[nstack-1]):
                     p_data={}
                     p_data['coord']= [int(oo[1]*input_r/output_res),int(oo[2]*input_r/output_res)]
-                    p_data['tag'] = {'identification':ref.parts[oid],'disc':'v'+str(int(oo[3]))}
+                    if oid%2==0:
+                        p_data['tag'] = {'identification':ref.parts[oid],'disc':'v'+str(int(oo[3]))}
+                    else:
+                        p_data['tag'] = {'identification': ref.parts[oid], 'vertebra': 'v' + str(int(oo[3]))}
                     a_point.append(p_data)
                     conf += oo[0]
                 a_data={'point':a_point}
                 annotations.append(a_data)
-                data['annotations'] = annotations
+                data['annotation'] = annotations
                 result = {"studyUid":frame_info[3],"data":data}
                 print(conf)
                 if(conf>3):
