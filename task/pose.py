@@ -40,7 +40,7 @@ __config__ = {
             ['combined_hm_loss', 1],
             ['combined_lb_loss', 1]
         ],
-        'decay_iters': 10000,
+        'decay_iters': 5000,
         'decay_lr': 0.8,
         'num_workers': 2,
         'use_data_loader': True,
@@ -142,7 +142,7 @@ def make_network(configs):
                 result = build_targets(combined_hm_preds, combined_lb_preds)
             if batch_id%config['train']['decay_iters']==0:
                 ## decrease the learning rate after decay # iterations
-                for param_group in optimizer.param_groups:
+                for param_group in train_cfg['optimizer'].param_groups:
                     param_group['lr'] = config['train']['decay_lr']*param_group['lr']
             
             return None

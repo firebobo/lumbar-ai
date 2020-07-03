@@ -59,7 +59,7 @@ class Dataset(torch.utils.data.Dataset):
         return self.size
 
     def __getitem__(self, idx):
-        return self.loadImage(int(random.random()*idx)%self.index)
+        return self.loadImage(int(random.random()*self.index+idx)%self.index)
 
     def loadImage(self, idx):
         ds = self.ds
@@ -78,9 +78,9 @@ class Dataset(torch.utils.data.Dataset):
         center = kpt_change_pre[int(np.random.random()*keypoints.shape[0])]
         inp_img = cv2.resize(orig_img, (self.input_res, self.input_res))
         if self.is_deal:
-            scale = np.random.random() * 0.4 + 0.8
+            scale = np.random.random() * 1.2 + 0.8
 
-            aug_rot = np.random.random() * 20
+            aug_rot = (np.random.random()-.5) * 40
 
             mat = cv2.getRotationMatrix2D((center[1], center[0]), aug_rot, scale)
 
