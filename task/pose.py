@@ -41,7 +41,7 @@ __config__ = {
             ['combined_lb_loss', 1]
         ],
         'decay_iters': 10000,
-        'decay_lr': 2e-4,
+        'decay_lr': 0.8,
         'num_workers': 2,
         'use_data_loader': True,
         'train_num_eval': 150,
@@ -87,7 +87,7 @@ def make_network(configs):
     config['net'] = forward_net
     config['lossLayers'] = KeypointLoss(configs['inference']['num_parts'],configs['inference']['nstack'],configs['inference']['num_class'])
     ## optimizer, experiment setup
-    train_cfg['optimizer'] = torch.optim.Adam(filter(lambda p: p.requires_grad,config['net'].parameters()), train_cfg['learning_rate'])
+    train_cfg['optimizer'] = torch.optim.Adam(filter(lambda p: p.requires_grad,config['net'].parameters()), train_cfg['learning_rate'],weight_decay=10)
 
     exp_path = os.path.join('exp', configs['opt'].exp)
     if configs['opt'].exp=='pose' and configs['opt'].continue_exp is not None:
@@ -140,10 +140,10 @@ def make_network(configs):
                 optimizer.step()
             elif phase == 'valid':
                 result = build_targets(combined_hm_preds, combined_lb_preds)
-            if batch_id == config['train']['decay_iters']:
+            if batch_id%config['train']['decay_iters']==0:
                 ## decrease the learning rate after decay # iterations
                 for param_group in optimizer.param_groups:
-                    param_group['lr'] = config['train']['decay_lr']
+                    param_group['lr'] = config['train']['decay_lr']*param_group['lr']
             
             return None
         else:

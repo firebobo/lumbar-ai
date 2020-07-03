@@ -142,7 +142,7 @@ def test():
             frame_info = [frame['dcmPath'].values[0],frame['instanceUid'].values[0],frame['seriesUid'].values[0],frame['studyUid'].values[0],]
             path = frame_info[0]
             orig_img=tcUtils.dicom2array(path)
-            input_r = orig_img.shape[0]
+            input_w,input_h = orig_img.shape
             inp_img = cv2.resize(orig_img, (input_res, input_res)).astype(np.float32)
             img = inp_img[np.newaxis,np.newaxis, :, :]
             img = torch.from_numpy(img).cuda()
@@ -162,7 +162,7 @@ def test():
                         p_data['tag'] = {'identification':ref.parts[oid],'disc':'v'+str(int(oo[3]))}
                     else:
                         p_data['tag'] = {'identification': ref.parts[oid], 'vertebra': 'v' + str(int(oo[3]))}
-                    p_data['coord'] = [int(oo[1]*input_r/output_res),int(oo[2]*input_r/output_res)]
+                    p_data['coord'] = [int(oo[2]*input_w/output_res),int(oo[1]*input_h/output_res)]
                     p_data['zIndex']=zIndex
                     a_point.append(p_data)
                     conf += oo[0]

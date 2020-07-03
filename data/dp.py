@@ -1,3 +1,5 @@
+import random
+
 import cv2
 import sys
 import os
@@ -57,7 +59,7 @@ class Dataset(torch.utils.data.Dataset):
         return self.size
 
     def __getitem__(self, idx):
-        return self.loadImage(idx%self.index)
+        return self.loadImage(int(random.random()*idx)%self.index)
 
     def loadImage(self, idx):
         ds = self.ds
