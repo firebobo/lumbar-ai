@@ -29,7 +29,7 @@ class LabelLoss(torch.nn.Module):
         for idx,g in enumerate(gt):
             l = torch.zeros((gt.shape[1]),dtype=float)
             for jdx,gg in enumerate(g):
-                if gg[9] < 0 or gg[10] < 0 or gg[9] >= m or gg[10] >= n:
+                if gg[9] <= 0 or gg[10] <= 0 or gg[9] >= m or gg[10] >= n:
                     continue
                 a = heatmap[idx,jdx]
                 index = int(a.argmax())

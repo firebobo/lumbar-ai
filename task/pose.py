@@ -87,7 +87,7 @@ def make_network(configs):
     config['net'] = forward_net
     config['lossLayers'] = KeypointLoss(configs['inference']['num_parts'],configs['inference']['nstack'],configs['inference']['num_class'])
     ## optimizer, experiment setup
-    train_cfg['optimizer'] = torch.optim.Adam(filter(lambda p: p.requires_grad,config['net'].parameters()), train_cfg['learning_rate'],weight_decay=10)
+    train_cfg['optimizer'] = torch.optim.Adam(filter(lambda p: p.requires_grad,config['net'].parameters()), train_cfg['learning_rate'])
 
     exp_path = os.path.join('exp', configs['opt'].exp)
     if configs['opt'].exp=='pose' and configs['opt'].continue_exp is not None:

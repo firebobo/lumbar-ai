@@ -40,6 +40,7 @@ def reload(config):
 
             config['inference']['net'].load_state_dict(checkpoint['state_dict'])
             # config['train']['optimizer'].load_state_dict(checkpoint['optimizer'])
+            # config['train']['epoch'] = checkpoint['epoch']
             config['train']['epoch'] = 0
             print("=> loaded checkpoint '{}' (epoch {})"
                   .format(resume, checkpoint['epoch']))
