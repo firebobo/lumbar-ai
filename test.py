@@ -21,7 +21,7 @@ from pytz import timezone
 import time
 import torch
 import importlib
-
+import numpy as np
 
 def parse_command_line():
     parser = argparse.ArgumentParser()
@@ -111,7 +111,7 @@ def init():
 
 
 def test():
-    trainPath = r'/home/dwxt/project/dcm/train'
+    trainPath = r'/home/dwxt/project/dcm/test'
     run_func, config = init()
     input_res = config['train']['input_res']
     output_res = config['train']['output_res']
@@ -128,17 +128,25 @@ def test():
         info_result.to_csv(trainPath + info_path, sep=',', header=True)
     uid = info_result.groupby(['studyUid', 'seriesUid'])
     result_list = []
+
+    study_score = {}
+    study_result = {}
+
     for key,group in uid:
         group_count = group.shape[0]
         if group_count >5:
-            frame = info_result.loc[info_result['instanceUid']==(key[1]+'.'+str(int(group_count/2)))]
+            zIndex = int(group_count / 2)
+            frame = info_result.loc[info_result['instanceUid'] == (key[1] +'.' + str(zIndex))]
             if frame.shape[0]==0:
                 continue
             frame_info = [frame['dcmPath'].values[0],frame['instanceUid'].values[0],frame['seriesUid'].values[0],frame['studyUid'].values[0],]
             path = frame_info[0]
             orig_img=tcUtils.dicom2array(path)
             input_r = orig_img.shape[0]
-            img = transforms(Image.fromarray(orig_img)).unsqueeze(0)
+            inp_img = cv2.resize(orig_img, (input_res, input_res)).astype(np.float32)
+            img = inp_img[np.newaxis,np.newaxis, :, :]
+            img = torch.from_numpy(img).cuda()
+
             out = run_func(key,config,"inference",**{'imgs':img})
             for o in out:
                 data = {}
@@ -150,28 +158,26 @@ def test():
                 conf = 0
                 for oid,oo in enumerate(o[nstack-1]):
                     p_data={}
-                    p_data['coord']= [int(oo[1]*input_r/output_res),int(oo[2]*input_r/output_res)]
                     if oid%2==0:
                         p_data['tag'] = {'identification':ref.parts[oid],'disc':'v'+str(int(oo[3]))}
                     else:
                         p_data['tag'] = {'identification': ref.parts[oid], 'vertebra': 'v' + str(int(oo[3]))}
+                    p_data['coord'] = [int(oo[1]*input_r/output_res),int(oo[2]*input_r/output_res)]
+                    p_data['zIndex']=zIndex
                     a_point.append(p_data)
                     conf += oo[0]
-                dis = 0
-                for ind,p in enumerate(a_point):
-                    if ind<len(a_point)-1:
-                        dis += ((p['coord'][0]-a_point[ind+1]['coord'][0])**2+(p['coord'][1]-a_point[ind+1]['coord'][1])**2)**.5
                 a_data={'point':a_point}
-                annotations.append(a_data)
+                annotations.append({"annotator": 70,'data':a_data})
                 data['annotation'] = annotations
-                result = {"studyUid":frame_info[3],"data":[data]}
-                print(conf)
-                dis_ = ((a_point[0]['coord'][0] - a_point[-1]['coord'][0]) ** 2 + (
-                            a_point[0]['coord'][1] - a_point[-1]['coord'][1]) ** 2) ** .5
-                print(dis,dis_)
-                if(dis< 2*dis_):
-                    result_list.append(result)
-    print(result_list)
+                result = {"studyUid":frame_info[3],"version":"v0.1","data":[data]}
+
+                if not study_score.get(frame_info[3]) or study_score.get(frame_info[3])<conf:
+                    print(frame_info[3],frame_info[1],study_score.get(frame_info[3]),conf)
+                    study_result[frame_info[3]] = result
+                    study_score[frame_info[3]] = conf
+
+    with open('data-{}.json'.format(tic), 'w', encoding='utf-8') as f:
+        f.write(json.dumps([d for d in study_result.values()], ensure_ascii=False))
     print('Done (t={:0.2f}s)'.format(time.time() - tic))
 
 
