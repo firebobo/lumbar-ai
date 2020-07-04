@@ -1,4 +1,6 @@
 import os
+import shutil
+
 import tqdm
 from os.path import dirname
 
@@ -8,6 +10,7 @@ cudnn.benchmark = True
 cudnn.enabled = True
 
 import torch
+import numpy as np
 import importlib
 import argparse
 from datetime import datetime
@@ -38,7 +41,7 @@ def reload(config):
             print("=> loading checkpoint '{}'".format(resume))
             checkpoint = torch.load(resume_file)
 
-            config['inference']['net'].load_state_dict(checkpoint['state_dict'])
+            config['inference']['net'].load_state_dict(checkpoint['state_dict'], False)
             # config['train']['optimizer'].load_state_dict(checkpoint['optimizer'])
             # config['train']['epoch'] = checkpoint['epoch']
             config['train']['epoch'] = 0
@@ -63,7 +66,7 @@ def save_checkpoint(state, is_best, filename='checkpoint.pt'):
         shutil.copyfile(filename, 'model_best.pt')
 
 
-def save(config):
+def save(config, is_best=False):
     resume = os.path.join('exp', config['opt'].exp)
     if config['opt'].exp == 'pose' and config['opt'].continue_exp is not None:
         resume = os.path.join('exp', config['opt'].continue_exp)
@@ -73,11 +76,12 @@ def save(config):
         'state_dict': config['inference']['net'].state_dict(),
         'optimizer': config['train']['optimizer'].state_dict(),
         'epoch': config['train']['epoch'],
-    }, False, filename=resume_file)
+    }, is_best, filename=resume_file)
     print('=> save checkpoint')
 
 
 def train(train_func, data_func, config, post_epoch=None):
+    best_loss = float('inf')
     while True:
         fails = 0
         print('epoch: ', config['train']['epoch'])
@@ -85,6 +89,7 @@ def train(train_func, data_func, config, post_epoch=None):
             if config['train']['epoch'] > config['train']['epoch_num']:
                 break
 
+        all_loss = 0
         for phase in ['train', 'valid']:
             num_step = config['train']['{}_iters'.format(phase)]
             generator = data_func(phase)
@@ -98,8 +103,14 @@ def train(train_func, data_func, config, post_epoch=None):
             for i in show_range:
                 datas = next(generator)
                 outs = train_func(batch_id + i, config, phase, **datas)
+                if phase == 'valid':
+                    all_loss += outs
         config['train']['epoch'] += 1
-        save(config)
+        is_best = False
+        if best_loss > all_loss != 0:
+            best_loss = all_loss
+            is_best = True
+        save(config, is_best)
 
 
 def init():

@@ -15,7 +15,7 @@ __config__ = {
     'data_provider': 'data.dp',
     'network': 'models.posenet.PoseNet',
     'inference': {
-        'nstack': 4,
+        'nstack': 8,
         'inp_dim': 256,
         'oup_dim': 11,
         'num_parts': 11,
@@ -145,7 +145,7 @@ def make_network(configs):
                 for param_group in train_cfg['optimizer'].param_groups:
                     param_group['lr'] = config['train']['decay_lr']*param_group['lr']
             
-            return None
+            return loss.cpu().detach().numpy()
         else:
             net = net.eval()
             combined_hm_preds, combined_lb_preds = net(inputs['imgs'])

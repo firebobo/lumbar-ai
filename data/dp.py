@@ -104,7 +104,7 @@ class Dataset(torch.utils.data.Dataset):
         labels = np.column_stack((labels, offset, kpt_int))
         heatmaps = self.generateHeatmap(kpt_change)
 
-        # self.show(heatmaps, inp, inp_img, kpt_change, kpt_change_pre)
+        # self.show(heatmaps, inp, inp_img, kpt_int, kpt_change_pre)
         return inp[np.newaxis,:,:], heatmaps.astype(np.float32),np.array(labels).astype(np.float32)
 
     def show(self, heatmaps, inp, inp_img, kpt_change, kpt_change_pre):
@@ -113,7 +113,7 @@ class Dataset(torch.utils.data.Dataset):
         for ind, k in enumerate(kpt_change):
             if k[0] <= 0 or k[1] <= 0 or k[0] >= self.output_res or k[1] >= self.output_res:
                 continue
-            show_inp[int(k[1]), int(k[0])] = 255
+            show_inp[k[0], k[1]] = 255
             heatmaps_show += heatmaps[ind, :, :]
         plt.imshow(heatmaps_show)
         plt.show()
