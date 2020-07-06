@@ -149,8 +149,8 @@ def init(config):
     train = config['inference']['train_num_eval']
 
     annot_path = r'/annotation.json'
-    train_data_dir = r'/home/dwxt/project/dcm/train'
-    valid_data_dir = r'/home/dwxt/project/dcm/valid'
+    train_data_dir = r'/nas/user/xuehui/fun/aspine/train'
+    valid_data_dir = r'/nas/user/xuehui/fun/aspine/valid'
     info_name = r'/info.csv'
     size = config['train']['epoch_num'] * config['train']['data_num']
 

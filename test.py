@@ -111,7 +111,7 @@ def init():
 
 
 def test():
-    trainPath = r'/home/dwxt/project/dcm/test'
+    trainPath = r'/nas/user/xuehui/fun/aspine/test'
     run_func, config = init()
     input_res = config['train']['input_res']
     output_res = config['train']['output_res']
