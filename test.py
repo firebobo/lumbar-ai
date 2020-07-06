@@ -1,3 +1,6 @@
+import shutil
+from os.path import dirname
+
 import cv2
 import torch
 import os
@@ -13,6 +16,7 @@ import json
 import re
 import pandas as pd
 from utils import tcUtils
+
 parser = HeatmapParser()
 
 import argparse
@@ -22,6 +26,7 @@ import time
 import torch
 import importlib
 import numpy as np
+import matplotlib.pyplot as plt
 
 def parse_command_line():
     parser = argparse.ArgumentParser()
@@ -85,6 +90,7 @@ def save(config):
     }, False, filename=resume_file)
     print('=> save checkpoint')
 
+
 def init():
     """
     task.__config__ contains the variables that control the training and testing
@@ -111,7 +117,7 @@ def init():
 
 
 def test():
-    trainPath = r'/nas/user/xuehui/fun/aspine/test'
+    trainPath = r'/home/dwxt/project/dcm/train'
     run_func, config = init()
     input_res = config['train']['input_res']
     output_res = config['train']['output_res']
@@ -132,55 +138,61 @@ def test():
     study_score = {}
     study_result = {}
 
-    for key,group in uid:
+    for key, group in uid:
         group_count = group.shape[0]
-        if group_count >5:
+        if group_count > 5:
             zIndex = int(group_count / 2)
-            frame = info_result.loc[info_result['instanceUid'] == (key[1] +'.' + str(zIndex))]
-            if frame.shape[0]==0:
+            frame = info_result.loc[info_result['instanceUid'] == (key[1] + '.' + str(zIndex))]
+            if frame.shape[0] == 0:
                 continue
-            frame_info = [frame['dcmPath'].values[0],frame['instanceUid'].values[0],frame['seriesUid'].values[0],frame['studyUid'].values[0],]
+            frame_info = [frame['dcmPath'].values[0], frame['instanceUid'].values[0], frame['seriesUid'].values[0],
+                          frame['studyUid'].values[0], ]
             path = frame_info[0]
-            orig_img=tcUtils.dicom2array(path)
-            input_w,input_h = orig_img.shape
+            orig_img = tcUtils.dicom2array(path)
+            input_w, input_h = orig_img.shape
             inp_img = cv2.resize(orig_img, (input_res, input_res)).astype(np.float32)
-            img = inp_img[np.newaxis,np.newaxis, :, :]
+            img = inp_img[np.newaxis, np.newaxis, :, :]
             img = torch.from_numpy(img).cuda()
 
-            out = run_func(key,config,"inference",**{'imgs':img})
+            out = run_func(key, config, "inference", **{'imgs': img})
             for o in out:
                 data = {}
                 data['seriesUid'] = frame_info[2]
                 data['instanceUid'] = frame_info[1]
-                annotations = []
+
 
                 a_point = []
                 conf = 0
-                for oid,oo in enumerate(o[nstack-1]):
-                    p_data={}
-                    if oid%2==0:
-                        p_data['tag'] = {'identification':ref.parts[oid],'disc':'v'+str(int(oo[3]))}
+                for oid, oo in enumerate(o[nstack - 1]):
+                    p_data = {}
+                    if oid % 2 == 0:
+                        p_data['tag'] = {'identification': ref.parts[oid], 'disc': 'v' + str(int(oo[3]))}
                     else:
                         p_data['tag'] = {'identification': ref.parts[oid], 'vertebra': 'v' + str(int(oo[3]))}
-                    p_data['coord'] = [int(oo[2]*input_w/output_res),int(oo[1]*input_h/output_res)]
-                    p_data['zIndex']=zIndex
+                    p_data['coord'] = [int(oo[2] * input_w / output_res), int(oo[1] * input_h / output_res)]
+                    p_data['zIndex'] = zIndex
                     a_point.append(p_data)
                     conf += oo[0]
-                a_data={'point':a_point}
-                annotations.append({"annotator": 70,'data':a_data})
-                data['annotation'] = annotations
-                result = {"studyUid":frame_info[3],"version":"v0.1","data":[data]}
+                a_data = {'point': a_point}
 
-                if not study_score.get(frame_info[3]) or study_score.get(frame_info[3])<conf:
-                    print(frame_info[3],frame_info[1],study_score.get(frame_info[3]),conf)
+                print(frame_info[3], frame_info[1], study_score.get(frame_info[3]), conf)
+                if not study_score.get(frame_info[3]):
+                    annotations = []
+                    annotations.append({"annotator": 70, 'data': a_data})
+                    data['annotation'] = annotations
+                    result = {"studyUid": frame_info[3], "version": "v0.1", "data": [data]}
                     study_result[frame_info[3]] = result
                     study_score[frame_info[3]] = conf
+                else:
+                    annotations = []
+                    annotations.append({"annotator": 70, 'data': a_data})
+                    data['annotation'] = annotations
+                    study_result[frame_info[3]]['data'].append(data)
+
 
     with open('data-{}.json'.format(tic), 'w', encoding='utf-8') as f:
         f.write(json.dumps([d for d in study_result.values()], ensure_ascii=False))
     print('Done (t={:0.2f}s)'.format(time.time() - tic))
-
-
 
 
 def read_info(trainPath):
@@ -197,6 +209,7 @@ def read_info(trainPath):
         except:
             continue
     return dcm_info
+
 
 if __name__ == '__main__':
     test()

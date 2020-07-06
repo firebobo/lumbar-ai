@@ -44,9 +44,9 @@ def reload(config):
             checkpoint = torch.load(resume_file)
 
             config['inference']['net'].load_state_dict(checkpoint['state_dict'], False)
-            # config['train']['optimizer'].load_state_dict(checkpoint['optimizer'])
-            # config['train']['epoch'] = checkpoint['epoch']
-            config['train']['epoch'] = 0
+            config['train']['optimizer'].load_state_dict(checkpoint['optimizer'])
+            config['train']['epoch'] = checkpoint['epoch']
+            # config['train']['epoch'] = 0
             print("=> loaded checkpoint '{}' (epoch {})"
                   .format(resume, checkpoint['epoch']))
         else:
@@ -65,7 +65,7 @@ def save_checkpoint(state, is_best, filename='checkpoint.pt'):
         os.makedirs(basename)
     torch.save(state, filename)
     if is_best:
-        shutil.copyfile(filename, 'model_best.pt')
+        shutil.copyfile(filename, basename+'/model_best.pt')
 
 
 
