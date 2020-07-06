@@ -107,9 +107,10 @@ def train(train_func, data_func, config, post_epoch=None):
             for i in show_range:
                 datas = next(generator)
                 loss = train_func(batch_id + i, config, phase, **datas)
-                losses.append(loss.item())
-                #print('epoch: {}; step: {}; loss: {}'.format(config['train']
-                ['epoch'],batch_id+i,loss.item()))
+                losses.append(loss)
+                print('epoch: {}; step: {}; loss: {}'.format(config['train']
+                ['epoch'],batch_id+i,loss))
+
         config['train']['epoch'] += 1
         if np.mean(np.array(losses))<save_loss:
             save_loss=np.mean(np.array(losses))
