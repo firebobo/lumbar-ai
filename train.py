@@ -1,4 +1,6 @@
 import os
+import shutil
+
 import tqdm
 from os.path import dirname
 
@@ -8,6 +10,7 @@ cudnn.benchmark = True
 cudnn.enabled = True
 
 import torch
+import numpy as np
 import importlib
 import argparse
 import shutil
@@ -40,9 +43,10 @@ def reload(config):
             print("=> loading checkpoint '{}'".format(resume))
             checkpoint = torch.load(resume_file)
 
-            config['inference']['net'].load_state_dict(checkpoint['state_dict'])
-            # config['train']['optimizer'].load_state_dict(checkpoint['optimizer'])
-            config['train']['epoch'] = 0
+            config['inference']['net'].load_state_dict(checkpoint['state_dict'], False)
+            config['train']['optimizer'].load_state_dict(checkpoint['optimizer'])
+            config['train']['epoch'] = checkpoint['epoch']
+            # config['train']['epoch'] = 0
             print("=> loaded checkpoint '{}' (epoch {})"
                   .format(resume, checkpoint['epoch']))
         else:
@@ -61,10 +65,11 @@ def save_checkpoint(state, is_best, filename='checkpoint.pt'):
         os.makedirs(basename)
     torch.save(state, filename)
     if is_best:
-        shutil.copyfile(filename, 'model_best.pt')
+        shutil.copyfile(filename, basename+'/model_best.pt')
 
 
-def save(config, is_best):
+
+def save(config, is_best=False):
     resume = os.path.join('exp', config['opt'].exp)
     if config['opt'].exp == 'pose' and config['opt'].continue_exp is not None:
         resume = os.path.join('exp', config['opt'].continue_exp)
@@ -87,6 +92,7 @@ def train(train_func, data_func, config, post_epoch=None):
             if config['train']['epoch'] > config['train']['epoch_num']:
                 break
 
+        all_loss = 0
         for phase in ['train', 'valid']:
             num_step = config['train']['{}_iters'.format(phase)]
             generator = data_func(phase)
@@ -104,10 +110,12 @@ def train(train_func, data_func, config, post_epoch=None):
                 losses.append(loss)
                 print('epoch: {}; step: {}; loss: {}'.format(config['train']
                 ['epoch'],batch_id+i,loss))
+
         config['train']['epoch'] += 1
         if np.mean(np.array(losses))<save_loss:
             save_loss=np.mean(np.array(losses))
             save(config, True)
+
 
 
 def init():
