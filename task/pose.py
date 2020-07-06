@@ -138,14 +138,14 @@ def make_network(configs):
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
-            elif phase == 'valid':
-                result = build_targets(combined_hm_preds, combined_lb_preds)
+            # elif phase == 'valid':
+                # result = build_targets(combined_hm_preds, combined_lb_preds)
             if batch_id%config['train']['decay_iters']==0:
                 ## decrease the learning rate after decay # iterations
                 for param_group in train_cfg['optimizer'].param_groups:
                     param_group['lr'] = config['train']['decay_lr']*param_group['lr']
             
-            return loss
+            return loss.item()
         else:
             net = net.eval()
             combined_hm_preds, combined_lb_preds = net(inputs['imgs'])
