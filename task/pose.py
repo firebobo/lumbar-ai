@@ -40,6 +40,7 @@ __config__ = {
             ['combined_hm_loss', 1],
             ['combined_lb_loss', 1]
         ],
+        'stack_loss': [1,2,3,4,5,6,7,8],
         'decay_iters': 5000,
         'decay_lr': 0.8,
         'num_workers': 2,
@@ -112,13 +113,13 @@ def make_network(configs):
             all_loss= config['inference']["lossLayers"](combined_hm_preds,combined_lb_preds,**{i:inputs[i] for i in inputs if i!='imgs'})
             num_loss = len(config['train']['loss'])
 
-            losses = [all_loss[idx]*i[1] for idx, i in enumerate(config['train']['loss'])]
+            losses = [all_loss[idx].cpu()*i[1] for idx, i in enumerate(config['train']['loss'])]
 
             loss = 0
             my_loss=[]
             toprint = '\n{}: '.format(batch_id)
             for i,l in enumerate(losses):
-                loss += torch.sum(l).cpu()
+                loss += torch.sum(l.mul(torch.Tensor(config['train']['stack_loss'])))
                 my_loss.append(l)
 
 
