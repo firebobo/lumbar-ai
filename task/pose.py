@@ -32,8 +32,8 @@ __config__ = {
         'output_res': 64,
         'epoch_num': 1000000,
         'data_num': 150,
-        'train_iters': 1000,
-        'valid_iters': 10,
+        'train_iters': 10,
+        'valid_iters': 5,
         'learning_rate': 1e-3,
         'max_num_people' : 1,
         'loss': [
@@ -119,7 +119,7 @@ def make_network(configs):
             my_loss=[]
             toprint = '\n{}: '.format(batch_id)
             for i,l in enumerate(losses):
-                loss += torch.sum(l.mul(torch.Tensor(config['train']['stack_loss']))).float()
+                loss += torch.sum(l.mul(torch.Tensor(config['train']['stack_loss']))).float().cpu()
                 my_loss.append(l)
 
 
@@ -145,8 +145,7 @@ def make_network(configs):
                 ## decrease the learning rate after decay # iterations
                 for param_group in train_cfg['optimizer'].param_groups:
                     param_group['lr'] = config['train']['decay_lr']*param_group['lr']
-            
-            return loss.cpu().detach().numpy()
+            return loss
         else:
             net = net.eval()
             combined_hm_preds, combined_lb_preds = net(inputs['imgs'])

@@ -13,6 +13,8 @@ import torch
 import numpy as np
 import importlib
 import argparse
+import shutil
+import numpy as np
 from datetime import datetime
 from pytz import timezone
 
@@ -66,6 +68,7 @@ def save_checkpoint(state, is_best, filename='checkpoint.pt'):
         shutil.copyfile(filename, basename+'/model_best.pt')
 
 
+
 def save(config, is_best=False):
     resume = os.path.join('exp', config['opt'].exp)
     if config['opt'].exp == 'pose' and config['opt'].continue_exp is not None:
@@ -81,7 +84,7 @@ def save(config, is_best=False):
 
 
 def train(train_func, data_func, config, post_epoch=None):
-    best_loss = float('inf')
+    save_loss = 1e10
     while True:
         fails = 0
         print('epoch: ', config['train']['epoch'])
@@ -96,21 +99,22 @@ def train(train_func, data_func, config, post_epoch=None):
             print('start', phase, config['opt'].exp)
 
             show_range = range(num_step)
-            show_range = tqdm.tqdm(show_range, total=num_step, ascii=True)
+            # show_range = tqdm.tqdm(show_range, total=num_step, ascii=True)
             batch_id = num_step * config['train']['epoch']
             if batch_id > config['opt'].max_iters * 1000:
                 return
+            losses =[]
             for i in show_range:
                 datas = next(generator)
-                outs = train_func(batch_id + i, config, phase, **datas)
-                if phase == 'valid':
-                    all_loss += outs
+                loss = train_func(batch_id + i, config, phase, **datas)
+                losses.append(loss.item())
+                #print('epoch: {}; step: {}; loss: {}'.format(config['train']
+                ['epoch'],batch_id+i,loss.item()))
         config['train']['epoch'] += 1
-        is_best = False
-        if best_loss > all_loss != 0:
-            best_loss = all_loss
-            is_best = True
-        save(config, is_best)
+        if np.mean(np.array(losses))<save_loss:
+            save_loss=np.mean(np.array(losses))
+            save(config, True)
+
 
 
 def init():
