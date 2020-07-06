@@ -15,7 +15,7 @@ __config__ = {
     'data_provider': 'data.dp',
     'network': 'models.posenet.PoseNet',
     'inference': {
-        'nstack': 4,
+        'nstack': 8,
         'inp_dim': 256,
         'oup_dim': 11,
         'num_parts': 11,
@@ -27,9 +27,9 @@ __config__ = {
     },
 
     'train': {
-        'batchsize': 12,
-        'input_res': 512,
-        'output_res': 128,
+        'batchsize': 16,
+        'input_res': 256,
+        'output_res': 64,
         'epoch_num': 1000000,
         'data_num': 150,
         'train_iters': 10,
@@ -87,7 +87,7 @@ def make_network(configs):
     config['net'] = forward_net
     config['lossLayers'] = KeypointLoss(configs['inference']['num_parts'],configs['inference']['nstack'],configs['inference']['num_class'])
     ## optimizer, experiment setup
-    train_cfg['optimizer'] = torch.optim.Adam(filter(lambda p: p.requires_grad,config['net'].parameters()), train_cfg['learning_rate'],weight_decay=10)
+    train_cfg['optimizer'] = torch.optim.Adam(filter(lambda p: p.requires_grad,config['net'].parameters()), train_cfg['learning_rate'])
 
     exp_path = os.path.join('exp', configs['opt'].exp)
     if configs['opt'].exp=='pose' and configs['opt'].continue_exp is not None:
@@ -144,7 +144,6 @@ def make_network(configs):
                 ## decrease the learning rate after decay # iterations
                 for param_group in train_cfg['optimizer'].param_groups:
                     param_group['lr'] = config['train']['decay_lr']*param_group['lr']
-            
             return loss
         else:
             net = net.eval()

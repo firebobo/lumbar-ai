@@ -36,7 +36,7 @@ class PoseNet(nn.Module):
         self.features = nn.ModuleList( [
         nn.Sequential(
             Residual(inp_dim, inp_dim),
-            Residual(inp_dim, inp_dim),
+            # Residual(inp_dim, inp_dim),
             Conv(inp_dim, inp_dim, 1, bn=True, relu=True)
         ) for i in range(nstack)] )
         
