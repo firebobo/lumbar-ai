@@ -13,7 +13,7 @@ from utils.misc import make_input, make_output, importNet
 
 __config__ = {
     'data_provider': 'data.dp',
-    'network': 'models.posenet.PoseNet',
+    'network': 'models.lumbarnet.PoseNet',
     'inference': {
         'nstack': 8,
         'inp_dim': 256,
@@ -119,7 +119,7 @@ def make_network(configs):
             my_loss=[]
             toprint = '\n{}: '.format(batch_id)
             for i,l in enumerate(losses):
-                loss += torch.sum(l.mul(torch.Tensor(config['train']['stack_loss'])))
+                loss += torch.sum(l.mul(torch.Tensor(config['train']['stack_loss']))).float()
                 my_loss.append(l)
 
 

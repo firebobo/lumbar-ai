@@ -49,25 +49,26 @@ class PoseNet(nn.Module):
             Residual(128, inp_dim)
         )
 
-        self.hgs = nn.ModuleList( [
-        nn.Sequential(
-            Hourglass(4, inp_dim, bn, increase),
-        ) for i in range(nstack)] )
+        self.hgs = nn.ModuleList([
+            nn.Sequential(
+                Hourglass(4, inp_dim, bn, increase),
+            ) for i in range(nstack)])
 
-        self.features = nn.ModuleList( [
-        nn.Sequential(
+        self.features = nn.ModuleList([
+            nn.Sequential(
+                Residual(inp_dim, inp_dim),
+                # Residual(inp_dim, inp_dim),
+                Conv(inp_dim, inp_dim, 1, bn=True, relu=True)
+            ) for i in range(nstack)])
+
+        self.outs_heatmap = nn.ModuleList([Conv(inp_dim, oup_dim, 1, relu=True, bn=True) for i in range(nstack)])
+        self.outs_heatmap_attention = nn.ModuleList([SpatialAttention() for i in range(nstack)])
+        self.outs_label = nn.ModuleList([nn.Sequential(
             Residual(inp_dim, inp_dim),
-            # Residual(inp_dim, inp_dim),
-            Conv(inp_dim, inp_dim, 1, bn=True, relu=True)
-        ) for i in range(nstack)] )
-
-        self.outs_heatmap = nn.ModuleList( [Conv(inp_dim, oup_dim, 1, relu=True, bn=True) for i in range(nstack)] )
-        self.outs_label = nn.ModuleList( [nn.Sequential(
-            Residual(inp_dim+oup_dim, inp_dim+oup_dim),
-            Conv(inp_dim+oup_dim, num_class, 1, relu=True, bn=True)
-        ) for i in range(nstack)] )
-        self.merge_features = nn.ModuleList( [Merge(inp_dim, inp_dim) for i in range(nstack-1)] )
-        self.merge_preds = nn.ModuleList( [Merge(oup_dim, inp_dim) for i in range(nstack-1)] )
+            Conv(inp_dim, num_class, 1, relu=True, bn=True)
+        ) for i in range(nstack)])
+        self.merge_features = nn.ModuleList([Merge(inp_dim, inp_dim) for i in range(nstack - 1)])
+        self.merge_preds = nn.ModuleList([Merge(oup_dim, inp_dim) for i in range(nstack - 1)])
         self.nstack = nstack
 
     def forward(self, imgs):
@@ -80,7 +81,8 @@ class PoseNet(nn.Module):
             hg = self.hgs[i](x)
             feature = self.features[i](hg)
             preds = self.outs_heatmap[i](feature)
-            feature_preds = torch.cat([feature,preds],1)
+            attention = self.outs_heatmap_attention[i](preds)
+            feature_preds = feature*attention
             label_preds = self.outs_label[i](feature_preds)
             combined_hm_preds.append(preds)
             combined_lb_preds.append(label_preds)
