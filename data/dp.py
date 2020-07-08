@@ -59,7 +59,8 @@ class Dataset(torch.utils.data.Dataset):
         return self.size
 
     def __getitem__(self, idx):
-        return self.loadImage(int(random.random()*self.index+idx)%self.index)
+        index = int(random.random() * self.index + idx) % self.index
+        return self.loadImage(index)
 
     def loadImage(self, idx):
         ds = self.ds
@@ -78,10 +79,12 @@ class Dataset(torch.utils.data.Dataset):
         center = kpt_change_pre[int(np.random.random()*keypoints.shape[0])]
         inp_img = cv2.resize(orig_img, (self.input_res, self.input_res))
         if self.is_deal:
-            scale = np.random.random() * 1.2 + 0.8
+            scale = np.random.random() * 0.4 + 0.8
 
             aug_rot = (np.random.random()-.5) * 40
 
+            diff = (np.random.random((self.input_res, self.input_res)) -.5) * 20
+            inp_img = inp_img+diff
             mat = cv2.getRotationMatrix2D((center[1], center[0]), aug_rot, scale)
 
             inp = cv2.warpAffine(inp_img, mat, (self.input_res, self.input_res)).astype(np.float32)
@@ -104,7 +107,7 @@ class Dataset(torch.utils.data.Dataset):
         labels = np.column_stack((labels, offset, kpt_int))
         heatmaps = self.generateHeatmap(kpt_change)
 
-        self.show(heatmaps, inp, inp_img, kpt_int, kpt_change_pre)
+        # self.show(heatmaps, inp, inp_img, kpt_int, kpt_change_pre)
         return inp[np.newaxis,:,:], heatmaps.astype(np.float32),np.array(labels).astype(np.float32)
 
     def show(self, heatmaps, inp, inp_img, kpt_change, kpt_change_pre):
@@ -156,13 +159,13 @@ def init(config):
     train = config['inference']['train_num_eval']
 
     annot_path = r'/annotation.json'
-    train_data_dir = r'/nas/user/xuehui/fun/aspine/train'
-    valid_data_dir = r'/nas/user/xuehui/fun/aspine/valid'
+    train_data_dir = r'/home/dwxt/project/dcm/train'
+    valid_data_dir = r'/home/dwxt/project/dcm/valid'
     info_name = r'/info.csv'
     size = config['train']['epoch_num'] * config['train']['data_num']
 
     train_db = Dataset(config, ds.Lumbar(train_data_dir, annot_path, info_name), size, 150,True)
-    valid_db = Dataset(config, ds.Lumbar(valid_data_dir, annot_path, info_name), size, 51,False)
+    valid_db = Dataset(config, ds.Lumbar(valid_data_dir, annot_path, info_name), size, 51,True)
 
     dataset = {'train':train_db,'valid':valid_db}
 
@@ -205,4 +208,4 @@ if __name__ == '__main__':
     size = config['train']['epoch_num'] * config['train']['data_num']
 
     train_db = Dataset(config, ds.Lumbar(train_data_dir, annot_path, info_name), size, 150,True)
-    train_db.loadImage(5)
+    train_db.loadImage(10)

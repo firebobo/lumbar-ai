@@ -38,7 +38,7 @@ def reload(config):
 
     if opt.continue_exp:
         resume = os.path.join('exp', opt.continue_exp)
-        resume_file = os.path.join(resume, 'checkpoint.pt')
+        resume_file = os.path.join(resume, 'model_best.pt')
         if os.path.isfile(resume_file):
             print("=> loading checkpoint '{}'".format(resume))
             checkpoint = torch.load(resume_file)
@@ -65,7 +65,7 @@ def save_checkpoint(state, is_best, filename='checkpoint.pt'):
         os.makedirs(basename)
     torch.save(state, filename)
     if is_best:
-        shutil.copyfile(filename, basename+'/model_best.pt')
+        shutil.copyfile(filename, basename + '/model_best.pt')
 
 
 
@@ -99,23 +99,24 @@ def train(train_func, data_func, config, post_epoch=None):
             print('start', phase, config['opt'].exp)
 
             show_range = range(num_step)
-            # show_range = tqdm.tqdm(show_range, total=num_step, ascii=True)
+            show_range = tqdm.tqdm(show_range, total=num_step, ascii=True)
             batch_id = num_step * config['train']['epoch']
             if batch_id > config['opt'].max_iters * 1000:
                 return
-            losses =[]
+            losses = []
             for i in show_range:
                 datas = next(generator)
                 loss = train_func(batch_id + i, config, phase, **datas)
                 losses.append(loss)
-                print('epoch: {}; step: {}; loss: {}'.format(config['train']
-                ['epoch'],batch_id+i,loss))
-
+                # print('epoch: {}; step: {}; loss: {}'.format(config['train']['epoch'],batch_id+i,loss))
         config['train']['epoch'] += 1
-        if np.mean(np.array(losses))<save_loss:
-            save_loss=np.mean(np.array(losses))
+        mean_loss = np.mean(np.array(losses))
+        print('valid loss:',save_loss,mean_loss)
+        if mean_loss < save_loss:
+            save_loss = mean_loss
             save(config, True)
-
+        else:
+            save(config)
 
 
 def init():

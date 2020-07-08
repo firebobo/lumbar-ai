@@ -28,6 +28,7 @@ import importlib
 import numpy as np
 import matplotlib.pyplot as plt
 
+
 def parse_command_line():
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--continue_exp', type=str, help='continue exp')
@@ -47,7 +48,7 @@ def reload(config):
 
     if opt.continue_exp:
         resume = os.path.join('exp', opt.continue_exp)
-        resume_file = os.path.join(resume, 'checkpoint.pt')
+        resume_file = os.path.join(resume, 'model_best.pt')
         if os.path.isfile(resume_file):
             print("=> loading checkpoint '{}'".format(resume))
             checkpoint = torch.load(resume_file)
@@ -117,7 +118,7 @@ def init():
 
 
 def test():
-    trainPath = r'/home/dwxt/project/dcm/train'
+    trainPath = r'/home/dwxt/project/dcm/test'
     run_func, config = init()
     input_res = config['train']['input_res']
     output_res = config['train']['output_res']
@@ -159,7 +160,7 @@ def test():
                 data = {}
                 data['seriesUid'] = frame_info[2]
                 data['instanceUid'] = frame_info[1]
-
+                annotations = []
 
                 a_point = []
                 conf = 0
@@ -174,21 +175,14 @@ def test():
                     a_point.append(p_data)
                     conf += oo[0]
                 a_data = {'point': a_point}
+                annotations.append({"annotator": 70, 'data': a_data})
+                data['annotation'] = annotations
+                result = {"studyUid": frame_info[3], "version": "v0.1", "data": [data]}
 
-                print(frame_info[3], frame_info[1], study_score.get(frame_info[3]), conf)
-                if not study_score.get(frame_info[3]):
-                    annotations = []
-                    annotations.append({"annotator": 70, 'data': a_data})
-                    data['annotation'] = annotations
-                    result = {"studyUid": frame_info[3], "version": "v0.1", "data": [data]}
+                if not study_score.get(frame_info[3]) or study_score.get(frame_info[3]) < conf:
+                    print(frame_info[3], frame_info[1], study_score.get(frame_info[3]), conf)
                     study_result[frame_info[3]] = result
                     study_score[frame_info[3]] = conf
-                else:
-                    annotations = []
-                    annotations.append({"annotator": 70, 'data': a_data})
-                    data['annotation'] = annotations
-                    study_result[frame_info[3]]['data'].append(data)
-
 
     with open('data-{}.json'.format(tic), 'w', encoding='utf-8') as f:
         f.write(json.dumps([d for d in study_result.values()], ensure_ascii=False))

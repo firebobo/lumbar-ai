@@ -58,14 +58,16 @@ class PoseNet(nn.Module):
             nn.Sequential(
                 Residual(inp_dim, inp_dim),
                 # Residual(inp_dim, inp_dim),
-                Conv(inp_dim, inp_dim, 1, bn=True, relu=True)
+                Conv(inp_dim, inp_dim, 1, bn=True, relu=False)
             ) for i in range(nstack)])
 
         self.outs_heatmap = nn.ModuleList([Conv(inp_dim, oup_dim, 1, relu=True, bn=True) for i in range(nstack)])
         self.outs_heatmap_attention = nn.ModuleList([SpatialAttention() for i in range(nstack)])
         self.outs_label = nn.ModuleList([nn.Sequential(
             Residual(inp_dim, inp_dim),
-            Conv(inp_dim, num_class, 1, relu=True, bn=True)
+            # Residual(inp_dim, inp_dim),
+            Conv(inp_dim, num_class, 1, relu=False, bn=True),
+            nn.Sigmoid()
         ) for i in range(nstack)])
         self.merge_features = nn.ModuleList([Merge(inp_dim, inp_dim) for i in range(nstack - 1)])
         self.merge_preds = nn.ModuleList([Merge(oup_dim, inp_dim) for i in range(nstack - 1)])

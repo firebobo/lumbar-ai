@@ -8,8 +8,8 @@ class HeatmapLoss(torch.nn.Module):
         super(HeatmapLoss, self).__init__()
 
     def forward(self, pred, gt):
-        l = ((pred - gt)**2)
-        l = l.sum(dim=3).sum(dim=2).sum(dim=1)
+        heat_l = ((pred - gt)**2)
+        l = heat_l.sum(dim=3).sum(dim=2).sum(dim=1)
         return l ## l of dim bsize
 
 class LabelLoss(torch.nn.Module):
