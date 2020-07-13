@@ -76,15 +76,16 @@ class Dataset(torch.utils.data.Dataset):
         mat_mask_pre = utils.img.get_transform_mat([0,0], img_aug_scale, 0)
         kpt_change_pre = utils.img.kpt_change(keypoints, mat_mask_pre)
 
-        center = kpt_change_pre[int(np.random.random()*keypoints.shape[0])]
+
         inp_img = cv2.resize(orig_img, (self.input_res, self.input_res))
         if self.is_deal:
-            scale = np.random.random() * 0.4 + 0.8
+            center = kpt_change_pre[int(np.random.random() * keypoints.shape[0])]
+            scale = (np.random.random()-0.5)* 0.4 + 1
 
-            aug_rot = (np.random.random()-.5) * 40
+            aug_rot = (np.random.random()-.5) * 60
 
-            diff = (np.random.random((self.input_res, self.input_res)) -.5) * 20
-            inp_img = inp_img+diff
+            # diff = (np.random.random((self.input_res, self.input_res)) -.5) * 20
+            # inp_img = inp_img+diff
             mat = cv2.getRotationMatrix2D((center[1], center[0]), aug_rot, scale)
 
             inp = cv2.warpAffine(inp_img, mat, (self.input_res, self.input_res)).astype(np.float32)

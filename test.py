@@ -9,6 +9,7 @@ from PIL import Image
 from torchvision.transforms import Compose, Resize, ToTensor
 
 from data import ref
+from task import cfg,update_config
 from utils.group import HeatmapParser
 import utils.img
 import glob
@@ -30,10 +31,27 @@ import matplotlib.pyplot as plt
 
 
 def parse_command_line():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description='Train keypoints network')
     parser.add_argument('-c', '--continue_exp', type=str, help='continue exp')
     parser.add_argument('-e', '--exp', type=str, default='pose', help='experiments name')
     parser.add_argument('-m', '--max_iters', type=int, default=250, help='max number of iterations (thousands)')
+
+    # general
+    parser.add_argument('--cfg',
+                        help='experiment configure file name',
+                        required=True,
+                        type=str)
+
+    parser.add_argument('--opts',
+                        help="Modify config options using the command-line",
+                        default=None,
+                        nargs=argparse.REMAINDER)
+
+    # distributed training
+    parser.add_argument('--gpu',
+                        help='gpu id for multiprocessing training',
+                        type=str)
+
     args = parser.parse_args()
     return args
 
@@ -104,6 +122,11 @@ def init():
     current_time = datetime.now().strftime('%b%d_%H-%M-%S')
 
     config = task.__config__
+
+
+    update_config(cfg, opt)
+    config['cfg'] = cfg
+
     try:
         os.makedirs(exp_path)
     except FileExistsError:
@@ -118,7 +141,7 @@ def init():
 
 
 def test():
-    trainPath = r'/home/dwxt/project/dcm/test'
+    trainPath = r'/home/dwxt/project/dcm/train'
     run_func, config = init()
     input_res = config['train']['input_res']
     output_res = config['train']['output_res']
@@ -164,7 +187,7 @@ def test():
 
                 a_point = []
                 conf = 0
-                for oid, oo in enumerate(o[nstack - 1]):
+                for oid, oo in enumerate(o):
                     p_data = {}
                     if oid % 2 == 0:
                         p_data['tag'] = {'identification': ref.parts[oid], 'disc': 'v' + str(int(oo[3]))}

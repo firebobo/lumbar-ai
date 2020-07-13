@@ -35,9 +35,9 @@ class LabelLoss(torch.nn.Module):
                 index = int(a.argmax())
                 x = int(index / m)
                 y = index % m
-                xy_loss = (gg[9] - x)**2+(gg[10] - y)**2
+                xy_loss = (gg[9]+gg[7] - x-pred[idx,7, jdx, 0])**2+(gg[10] +gg[8]- y-pred[idx, 8, jdx, 0])**2
                 conf_loss = (1 - a[x, y])**2
-                class_loss = ((pred[idx, :, x, y] - gg[0:9]) ** 2).sum()
+                class_loss = ((pred[idx, 0:7, jdx, 0] - gg[0:7]) ** 2).sum()
                 l[jdx] = class_loss + xy_loss + conf_loss
             loss[idx] = l.sum()
         return loss ## l of dim bsize
@@ -57,17 +57,8 @@ class KeypointLoss(torch.nn.Module):
         self.heatmapLoss = HeatmapLoss()
         self.labelLoss = LabelLoss()
 
-    def forward(self, combined_hm_preds, combined_lb_preds, **gt):
-        loss = self.calc_loss(combined_hm_preds=combined_hm_preds, combined_lb_preds=combined_lb_preds, **gt)
-        return loss
+    def forward(self, combined_preds, heatmaps, labels):
+        combined_loss = self.heatmapLoss(combined_preds[:, :self.keys], heatmaps)
+        labels_loss = self.labelLoss(combined_preds[:, self.keys:], labels, combined_preds[:, :self.keys])
 
-    def calc_loss(self, combined_hm_preds, combined_lb_preds, heatmaps, labels):
-        combined_loss = []
-        labels_loss = []
-        for i in range(self.nstack):
-            combined_loss.append(self.heatmapLoss(combined_hm_preds[:, i], heatmaps))
-            labels_loss.append(self.labelLoss(combined_lb_preds[:, i], labels, combined_hm_preds[:, i]))
-
-        combined_loss = torch.stack(combined_loss, dim=1)
-        labels_loss = torch.stack(labels_loss, dim=1)
         return combined_loss, labels_loss

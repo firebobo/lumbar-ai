@@ -17,13 +17,30 @@ import shutil
 import numpy as np
 from datetime import datetime
 from pytz import timezone
-
+from task import cfg,update_config
 
 def parse_command_line():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description='Train keypoints network')
     parser.add_argument('-c', '--continue_exp', type=str, help='continue exp')
     parser.add_argument('-e', '--exp', type=str, default='pose', help='experiments name')
     parser.add_argument('-m', '--max_iters', type=int, default=250, help='max number of iterations (thousands)')
+
+    # general
+    parser.add_argument('--cfg',
+                        help='experiment configure file name',
+                        required=True,
+                        type=str)
+
+    parser.add_argument('--opts',
+                        help="Modify config options using the command-line",
+                        default=None,
+                        nargs=argparse.REMAINDER)
+
+    # distributed training
+    parser.add_argument('--gpu',
+                        help='gpu id for multiprocessing training',
+                        type=str)
+
     args = parser.parse_args()
     return args
 
@@ -131,6 +148,9 @@ def init():
     current_time = datetime.now().strftime('%b%d_%H-%M-%S')
 
     config = task.__config__
+
+    update_config(cfg, opt)
+    config['cfg'] = cfg
     try:
         os.makedirs(exp_path)
     except FileExistsError:
