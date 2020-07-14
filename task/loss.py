@@ -36,9 +36,10 @@ class LabelLoss(torch.nn.Module):
                 x = int(index / m)
                 y = index % m
                 xy_loss = (gg[9]+gg[7] - x-pred[idx,7, jdx, 0])**2+(gg[10] +gg[8]- y-pred[idx, 8, jdx, 0])**2
-                conf_loss = (1 - a[x, y])**2
+                # conf_loss = (1 - a[x, y])**2
                 class_loss = ((pred[idx, 0:7, jdx, 0] - gg[0:7]) ** 2).sum()
-                l[jdx] = class_loss + xy_loss + conf_loss
+                # l[jdx] = class_loss + xy_loss + conf_loss
+                l[jdx] = class_loss+xy_loss
             loss[idx] = l.sum()
         return loss ## l of dim bsize
 

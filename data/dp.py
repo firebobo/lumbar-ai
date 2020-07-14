@@ -49,7 +49,8 @@ class Dataset(torch.utils.data.Dataset):
         self.input_res = config['train']['input_res']
         self.output_res = config['train']['output_res']
         self.size = size
-        self.generateHeatmap = GenerateHeatmap(self.output_res, config['inference']['num_parts'])
+        self.num_deconvs = config['cif'].MODEL.EXTRA.DECONV.NUM_DECONVS
+        self.generateHeatmap = [GenerateHeatmap(self.output_res*(i+1), config['inference']['num_parts']) for i in (self.num_deconvs+1)]
         self.ds = ds
         self.index = index
         self.is_deal = is_deal
@@ -99,17 +100,17 @@ class Dataset(torch.utils.data.Dataset):
         mat_post = cv2.getRotationMatrix2D((0,0), 0, self.output_res/self.input_res)
         kpt_change = utils.img.kpt_affine(kpt_affine, mat_post)
 
-        offset = np.zeros(keypoints.shape)
-        for ind,k in enumerate(kpt_change):
-            offset[ind,0]=k[0] - int(k[0])
-            offset[ind,1]=k[1] - int(k[1])
+        # offset = np.zeros(keypoints.shape)
+        # for ind,k in enumerate(kpt_change):
+        #     offset[ind,0]=k[0] - int(k[0])
+        #     offset[ind,1]=k[1] - int(k[1])
         # print(offset)
         kpt_int = kpt_change.astype(np.int)[:,[1,0]]
-        labels = np.column_stack((labels, offset, kpt_int))
-        heatmaps = self.generateHeatmap(kpt_change)
+        # labels = np.column_stack((labels, kpt_change))
+        heatmaps = [self.generateHeatmap[i](kpt_change**(i+1)) for i in (self.num_deconvs+1)]
 
         # self.show(heatmaps, inp, inp_img, kpt_int, kpt_change_pre)
-        return inp[np.newaxis,:,:], heatmaps.astype(np.float32),np.array(labels).astype(np.float32)
+        return inp[np.newaxis,:,:], heatmaps,np.array(labels).astype(np.float32)
 
     def show(self, heatmaps, inp, inp_img, kpt_change, kpt_change_pre):
         show_inp = cv2.resize(inp, (self.output_res, self.output_res))
