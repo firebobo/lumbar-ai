@@ -10,6 +10,7 @@ from torchvision.transforms import Compose, Resize, ToTensor
 
 from data import ref
 from task import cfg,update_config
+from train import parse_command_line
 from utils.group import HeatmapParser
 import utils.img
 import glob
@@ -29,31 +30,6 @@ import importlib
 import numpy as np
 import matplotlib.pyplot as plt
 
-
-def parse_command_line():
-    parser = argparse.ArgumentParser(description='Train keypoints network')
-    parser.add_argument('-c', '--continue_exp', type=str, help='continue exp')
-    parser.add_argument('-e', '--exp', type=str, default='pose', help='experiments name')
-    parser.add_argument('-m', '--max_iters', type=int, default=250, help='max number of iterations (thousands)')
-
-    # general
-    parser.add_argument('--cfg',
-                        help='experiment configure file name',
-                        required=True,
-                        type=str)
-
-    parser.add_argument('--opts',
-                        help="Modify config options using the command-line",
-                        default=None,
-                        nargs=argparse.REMAINDER)
-
-    # distributed training
-    parser.add_argument('--gpu',
-                        help='gpu id for multiprocessing training',
-                        type=str)
-
-    args = parser.parse_args()
-    return args
 
 
 def reload(config):
@@ -194,6 +170,7 @@ def test():
                     else:
                         p_data['tag'] = {'identification': ref.parts[oid], 'vertebra': 'v' + str(int(oo[3]))}
                     p_data['coord'] = [int(oo[2] * input_w / output_res), int(oo[1] * input_h / output_res)]
+                    orig_img[p_data['coord'][0], p_data['coord'][1]] = 255
                     p_data['zIndex'] = zIndex
                     a_point.append(p_data)
                     conf += oo[0]
@@ -206,6 +183,8 @@ def test():
                     print(frame_info[3], frame_info[1], study_score.get(frame_info[3]), conf)
                     study_result[frame_info[3]] = result
                     study_score[frame_info[3]] = conf
+            plt.imshow(orig_img)
+            plt.show()
 
     with open('data-{}.json'.format(tic), 'w', encoding='utf-8') as f:
         f.write(json.dumps([d for d in study_result.values()], ensure_ascii=False))

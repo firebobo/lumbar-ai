@@ -90,7 +90,7 @@ MODEL:
       - 384
       FUSE_METHOD: SUM
     DECONV:
-      NUM_DECONVS: 2
+      NUM_DECONVS: 0
       NUM_CHANNELS:
       - 48
       KERNEL_SIZE:

@@ -29,17 +29,13 @@ def parse_command_line():
     parser.add_argument('--cfg',
                         help='experiment configure file name',
                         required=True,
+                        default="",
                         type=str)
 
     parser.add_argument('--opts',
                         help="Modify config options using the command-line",
                         default=None,
                         nargs=argparse.REMAINDER)
-
-    # distributed training
-    parser.add_argument('--gpu',
-                        help='gpu id for multiprocessing training',
-                        type=str)
 
     args = parser.parse_args()
     return args
