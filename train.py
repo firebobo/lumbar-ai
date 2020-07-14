@@ -38,7 +38,7 @@ def reload(config):
 
     if opt.continue_exp:
         resume = os.path.join('exp', opt.continue_exp)
-        resume_file = os.path.join(resume, 'model_best.pt')
+        resume_file = os.path.join(resume, 'checkpoint.pt')
         if os.path.isfile(resume_file):
             print("=> loading checkpoint '{}'".format(resume))
             checkpoint = torch.load(resume_file)

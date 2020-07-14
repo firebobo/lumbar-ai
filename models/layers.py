@@ -1,4 +1,5 @@
 from torch import nn
+import math
 
 Pool = nn.MaxPool2d
 
@@ -84,3 +85,45 @@ class Hourglass(nn.Module):
         low3 = self.low3(low2)
         up2  = self.up2(low3)
         return up1 + up2
+
+class ClsHead(nn.Module):
+    def __init__(self,
+                 inplanes,
+                 num_anchors,
+                 num_classes,
+                 num_layers=4,
+                 prior=0.01):
+        super(ClsHead, self).__init__()
+        layers = []
+        for _ in range(num_layers):
+            layers.append(
+                nn.Conv2d(inplanes,
+                          inplanes,
+                          kernel_size=3,
+                          stride=1,
+                          padding=1))
+            layers.append(nn.ReLU(inplace=True))
+        layers.append(
+            nn.Conv2d(inplanes,
+                      num_anchors * num_classes,
+                      kernel_size=3,
+                      stride=1,
+                      padding=1))
+        self.cls_head = nn.Sequential(*layers)
+        self.sigmoid = nn.Sigmoid()
+
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.normal_(m.weight, std=0.01)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, val=0)
+
+        prior = prior
+        b = -math.log((1 - prior) / prior)
+        self.cls_head[-1].bias.data.fill_(b)
+
+    def forward(self, x):
+        x = self.cls_head(x)
+        x = self.sigmoid(x)
+
+        return x

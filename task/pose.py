@@ -109,44 +109,39 @@ def make_network(configs):
         net = net.train()
 
         if phase != 'inference':
-            combined_hm_preds, combined_lb_preds = net(inputs['imgs'])
-            all_loss= config['inference']["lossLayers"](combined_hm_preds,combined_lb_preds,**{i:inputs[i] for i in inputs if i!='imgs'})
+            combined_preds = net(inputs['imgs'])
+            combined_loss, labels_loss= config['inference']["lossLayers"](combined_preds,**{i:inputs[i] for i in inputs if i!='imgs'})
             num_loss = len(config['train']['loss'])
 
-            losses = [all_loss[idx].cpu()*i[1] for idx, i in enumerate(config['train']['loss'])]
-
-            loss = 0
-            my_loss=[]
+            # losses = [all_loss[idx].cpu()*i[1] for idx, i in enumerate(config['train']['loss'])]
+            heatmap_loss = torch.sum(combined_loss.cpu().mul(torch.Tensor(config['train']['stack_loss'])))
+            label_loss = torch.sum(labels_loss.cpu().mul(torch.Tensor(config['train']['stack_loss'])))
             toprint = '\n{}: '.format(batch_id)
-            for i,l in enumerate(losses):
-                loss += torch.sum(l.mul(torch.Tensor(config['train']['stack_loss']))).float().cpu()
-                my_loss.append(l)
 
-
-            if len(my_loss) == 1:
-                toprint += ' {}: {}'.format(i, format(my_loss, '.8f'))
+            if batch_id % 100 == 0:
+                toprint += ' \n{}'.format(str(combined_loss.cpu()))
+                toprint += ' \n{}'.format(str(labels_loss.cpu()))
             else:
-                for j in my_loss:
-                    if batch_id%100==0:
-                        toprint += ' \n{}'.format(format(str(j)))
-                    else:
-                        toprint += ' {}'.format(format(j.sum(),'.8f'))
+                toprint += ' {},{}'.format(heatmap_loss,label_loss)
+
             logger.write(toprint)
             logger.flush()
             
             if phase == 'train':
                 optimizer = train_cfg['optimizer']
                 optimizer.zero_grad()
+                loss = heatmap_loss+label_loss
                 loss.backward()
                 optimizer.step()
             elif phase == 'valid':
-                loss = losses[-1][-1].sum().cpu()
+                loss = labels_loss[:,-1].sum().cpu()
+                return loss.item()
                 # result = build_targets(combined_hm_preds, combined_lb_preds)
             if batch_id%config['train']['decay_iters']==0:
                 ## decrease the learning rate after decay # iterations
                 for param_group in train_cfg['optimizer'].param_groups:
                     param_group['lr'] = config['train']['decay_lr']*param_group['lr']
-            return loss.item()
+            return heatmap_loss.item()
         else:
             net = net.eval()
             combined_hm_preds, combined_lb_preds = net(inputs['imgs'])
