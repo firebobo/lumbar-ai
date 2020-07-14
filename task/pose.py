@@ -134,7 +134,7 @@ def make_network(configs):
                 loss.backward()
                 optimizer.step()
             elif phase == 'valid':
-                loss = labels_loss[:,-1].sum().cpu()
+                loss = labels_loss[:,-1].sum().cpu()+combined_loss[:,-1].sum().cpu()
                 return loss.item()
                 # result = build_targets(combined_hm_preds, combined_lb_preds)
             if batch_id%config['train']['decay_iters']==0:
