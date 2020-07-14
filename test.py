@@ -171,6 +171,10 @@ def test():
                     else:
                         p_data['tag'] = {'identification': ref.parts[oid], 'vertebra': 'v' + str(int(oo[3]))}
                     p_data['coord'] = [int(oo[2] * input_w / output_res), int(oo[1] * input_h / output_res)]
+                    try:
+                        orig_img[p_data['coord'][1], p_data['coord'][0]] = 255
+                    except:
+                        pass
                     p_data['zIndex'] = zIndex
                     a_point.append(p_data)
                     conf += oo[0]
@@ -178,12 +182,16 @@ def test():
                 annotations.append({"annotator": 70, 'data': a_data})
                 data['annotation'] = annotations
                 result = {"studyUid": frame_info[3], "version": "v0.1", "data": [data]}
-
+                # plt.imshow(orig_img)
+                # plt.title(frame_info[1]+'---'+str(conf))
+                # plt.show()
                 if not study_score.get(frame_info[3]) or study_score.get(frame_info[3]) < conf:
                     print(frame_info[3], frame_info[1], study_score.get(frame_info[3]), conf)
                     study_result[frame_info[3]] = result
                     study_score[frame_info[3]] = conf
 
+
+    print(tic)
     with open('data-{}.json'.format(tic), 'w', encoding='utf-8') as f:
         f.write(json.dumps([d for d in study_result.values()], ensure_ascii=False))
     print('Done (t={:0.2f}s)'.format(time.time() - tic))

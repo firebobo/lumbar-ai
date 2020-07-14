@@ -55,7 +55,7 @@ try:
 except:
     info_result = read_info(trainPath)
     info_result.to_csv(trainPath + info_path, sep=',', header=True)
-with open('data-1594172331.9478407.json', 'r', encoding='utf-8') as f:
+with open('data-1594721882.6646216.json', 'r', encoding='utf-8') as f:
     study_result = json.load(f)
 for i, v in enumerate(study_result):
     for data_ in v['data']:

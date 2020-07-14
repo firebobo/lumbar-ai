@@ -32,7 +32,7 @@ __config__ = {
         'output_res': 64,
         'epoch_num': 1000000,
         'data_num': 150,
-        'train_iters': 1000,
+        'train_iters': 100,
         'valid_iters': 10,
         'learning_rate': 1e-3,
         'max_num_people' : 1,
@@ -42,7 +42,7 @@ __config__ = {
         ],
         'stack_loss': [1,2,3,4],
         'decay_iters': 2000,
-        'decay_lr': 0.8,
+        'decay_lr': 0.1,
         'num_workers': 2,
         'use_data_loader': True,
         'train_num_eval': 150,
@@ -58,6 +58,7 @@ def build_targets(heatmap,labelmap):
 
     m = size[3]
     n = size[4]
+    labelmap = labelmap.contiguous().view(labelmap.shape[0], labelmap.shape[1],labelmap.shape[2], -1)
     for idx,g in enumerate(heatmap):
         for jdx,gg in enumerate(g):
             for kdx,ggg in enumerate(gg):
@@ -66,13 +67,13 @@ def build_targets(heatmap,labelmap):
                 x = int(index / n)
                 y = index % n
                 targets[idx,jdx,kdx,0] = a[x,y]
-                targets[idx, jdx,kdx, 1:3] = [x+labelmap[idx, jdx, 7, x, y],y+labelmap[idx, jdx, 8, x, y]]
-                y_ = labelmap[idx, jdx, :, x, y]
+                targets[idx, jdx,kdx, 1:3] = [x+labelmap[idx, jdx, kdx, 7],y+labelmap[idx, jdx, kdx, 8]]
+                y_ = labelmap[idx, jdx, kdx,:]
                 if kdx%2==0:
-                    y_ = labelmap[idx, jdx, 2:7, x, y]
+                    y_ = labelmap[idx, jdx, kdx, 2:7]
                     ind = y_.argmax()
                 else:
-                    y_ = labelmap[idx, jdx, :2, x, y]
+                    y_ = labelmap[idx, jdx, kdx, :2]
                     ind = y_.argmax()
                 targets[idx, jdx,kdx, 3] = ind+1
 
@@ -126,14 +127,12 @@ def make_network(configs):
 
             logger.write(toprint)
             logger.flush()
-            
-            if phase == 'train':
-                optimizer = train_cfg['optimizer']
-                optimizer.zero_grad()
-                loss = heatmap_loss+label_loss
-                loss.backward()
-                optimizer.step()
-            elif phase == 'valid':
+            optimizer = train_cfg['optimizer']
+            optimizer.zero_grad()
+            loss = heatmap_loss + label_loss
+            loss.backward()
+            optimizer.step()
+            if phase == 'valid':
                 loss = labels_loss[:,-1].sum().cpu()+combined_loss[:,-1].sum().cpu()
                 return loss.item()
                 # result = build_targets(combined_hm_preds, combined_lb_preds)
@@ -144,10 +143,8 @@ def make_network(configs):
             return heatmap_loss.item()
         else:
             net = net.eval()
-            combined_hm_preds, combined_lb_preds = net(inputs['imgs'])
-            combined_hm_preds = make_output(combined_hm_preds)
-            combined_lb_preds = make_output(combined_lb_preds)
-            result= build_targets(combined_hm_preds, combined_lb_preds)
+            combined_preds = net(inputs['imgs'])
+            result = build_targets(combined_preds[:, :, :configs['inference']['num_parts']], combined_preds[:, :, configs['inference']['num_parts']:])
             out = result
             return out
     return make_train
