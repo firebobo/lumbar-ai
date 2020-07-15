@@ -59,8 +59,7 @@ class Dataset(torch.utils.data.Dataset):
         return self.size
 
     def __getitem__(self, idx):
-        index = int(random.random() * self.index + idx) % self.index
-        return self.loadImage(index)
+        return self.loadImage(idx%self.index)
 
     def loadImage(self, idx):
         ds = self.ds
@@ -162,10 +161,11 @@ def init(config):
     train_data_dir = r'/home/dwxt/project/dcm/train'
     valid_data_dir = r'/home/dwxt/project/dcm/valid'
     info_name = r'/info.csv'
-    size = config['train']['epoch_num'] * config['train']['data_num']
+    iters = config['train']['train_iters']
+    batch_size = config['train']['batchsize']
 
-    train_db = Dataset(config, ds.Lumbar(train_data_dir, annot_path, info_name), size, 150,True)
-    valid_db = Dataset(config, ds.Lumbar(valid_data_dir, annot_path, info_name), size, 51,True)
+    train_db = Dataset(config, ds.Lumbar(train_data_dir, annot_path, info_name), iters*batch_size, 150,True)
+    valid_db = Dataset(config, ds.Lumbar(valid_data_dir, annot_path, info_name), config['train']['valid_iters']*batch_size, 51,True)
 
     dataset = {'train':train_db,'valid':valid_db}
 
@@ -173,31 +173,7 @@ def init(config):
     for key in dataset:
         loaders[key] = torch.utils.data.DataLoader(dataset[key], batch_size=batchsize, shuffle=True, num_workers=config['train']['num_workers'], pin_memory=False)
 
-    def gen(phase):
-        epoch = config['train']['epoch_num']
-        batchsize = config['train']['batchsize']
-        loader = loaders[phase].__iter__()
-        batch_iterator = iter(loader)
-        for e in range(epoch):
-            try:
-                imgs, heatmaps, labels =  next(batch_iterator)
-                yield {
-                    'imgs': imgs,  # cropped and augmented
-                    'heatmaps': heatmaps,  # based on keypoints. 0 if not in img for joint
-                    'labels': labels
-                }
-            except StopIteration:
-                batch_iterator = iter(loader)
-                imgs, heatmaps, labelss = next(batch_iterator)
-                yield {
-                    'imgs': imgs,  # cropped and augmented
-                    'heatmaps': heatmaps,  # based on keypoints. 0 if not in img for joint
-                    'labels': labels
-                }
-
-
-
-    return lambda key: gen(key)
+    return loaders
 
 if __name__ == '__main__':
     import task.pose
