@@ -34,7 +34,7 @@ __config__ = {
         'output_res': 64,
         'epoch_num': 300,
         'data_num': 150,
-        'train_iters': 10,
+        'train_iters': 1000,
         'valid_iters': 10,
         'learning_rate': 1e-3,
         'max_num_people': 1,
@@ -176,8 +176,8 @@ def do_valid(epoch, config, loader):
             else:
                 toprint += ' {},{}'.format(heatmap_loss, label_loss)
             batch_idx += 1
-            run_loss += loss.item()
-
+            run_loss += loss.float().item()
+    return run_loss
 
 def do_test(inputs, config):
     net = config['inference']['net']

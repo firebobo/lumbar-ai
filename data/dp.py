@@ -12,20 +12,21 @@ import matplotlib.pyplot as plt
 import utils.img
 import data.ref as ds
 
+
 class GenerateHeatmap():
     def __init__(self, output_res, num_parts):
         self.output_res = output_res
         self.num_parts = num_parts
-        sigma = self.output_res/64
+        sigma = self.output_res / 64
         self.sigma = sigma
-        size = 6*sigma + 3
+        size = 6 * sigma + 3
         x = np.arange(0, size, 1, float)
         y = x[:, np.newaxis]
-        x0, y0 = 3*sigma + 1, 3*sigma + 1
+        x0, y0 = 3 * sigma + 1, 3 * sigma + 1
         self.g = np.exp(- ((x - x0) ** 2 + (y - y0) ** 2) / (2 * sigma ** 2))
 
     def __call__(self, keypoints):
-        hms = np.zeros(shape = (self.num_parts, self.output_res, self.output_res), dtype = np.float32)
+        hms = np.zeros(shape=(self.num_parts, self.output_res, self.output_res), dtype=np.float32)
         sigma = self.sigma
         for idx, pt in enumerate(keypoints):
             if pt[0] > 0:
@@ -45,7 +46,7 @@ class GenerateHeatmap():
 
 
 class Dataset(torch.utils.data.Dataset):
-    def __init__(self, config, ds,size, index,is_deal):
+    def __init__(self, config, ds, size, index, is_deal, transforms):
         self.input_res = config['train']['input_res']
         self.output_res = config['train']['output_res']
         self.size = size
@@ -53,13 +54,13 @@ class Dataset(torch.utils.data.Dataset):
         self.ds = ds
         self.index = index
         self.is_deal = is_deal
-
+        self.transforms = transforms
 
     def __len__(self):
         return self.size
 
     def __getitem__(self, idx):
-        return self.loadImage(idx%self.index)
+        return self.loadImage(idx % self.index)
 
     def loadImage(self, idx):
         ds = self.ds
@@ -68,22 +69,21 @@ class Dataset(torch.utils.data.Dataset):
         keypoints = ds.get_kps(idx)
         labels = ds.get_labels(idx)
 
-        width,height = orig_img.shape[0:2]
+        width, height = orig_img.shape[0:2]
 
-
-        img_aug_scale = np.array([self.input_res/height,self.input_res/width])
-        mat_mask_pre = utils.img.get_transform_mat([0,0], img_aug_scale, 0)
+        img_aug_scale = np.array([self.input_res / height, self.input_res / width])
+        mat_mask_pre = utils.img.get_transform_mat([0, 0], img_aug_scale, 0)
         kpt_change_pre = utils.img.kpt_change(keypoints, mat_mask_pre)
 
-        center = kpt_change_pre[int(np.random.random()*keypoints.shape[0])]
+        center = kpt_change_pre[int(np.random.random() * keypoints.shape[0])]
         inp_img = cv2.resize(orig_img, (self.input_res, self.input_res))
         if self.is_deal:
             scale = np.random.random() * 0.4 + 0.8
 
-            aug_rot = (np.random.random()-.5) * 40
+            aug_rot = (np.random.random() - .5) * 40
 
-            diff = (np.random.random((self.input_res, self.input_res)) -.5) * 20
-            inp_img = inp_img+diff
+            diff = (np.random.random((self.input_res, self.input_res)) - .5) * 20
+            inp_img = inp_img + diff
             mat = cv2.getRotationMatrix2D((center[1], center[0]), aug_rot, scale)
 
             inp = cv2.warpAffine(inp_img, mat, (self.input_res, self.input_res)).astype(np.float32)
@@ -94,20 +94,20 @@ class Dataset(torch.utils.data.Dataset):
             kpt_affine = kpt_change_pre
             inp = inp_img.astype(np.float32)
 
-        mat_post = cv2.getRotationMatrix2D((0,0), 0, self.output_res/self.input_res)
+        mat_post = cv2.getRotationMatrix2D((0, 0), 0, self.output_res / self.input_res)
         kpt_change = utils.img.kpt_affine(kpt_affine, mat_post)
 
         offset = np.zeros(keypoints.shape)
-        for ind,k in enumerate(kpt_change):
-            offset[ind,0]=k[0] - int(k[0])
-            offset[ind,1]=k[1] - int(k[1])
+        for ind, k in enumerate(kpt_change):
+            offset[ind, 0] = k[0] - int(k[0])
+            offset[ind, 1] = k[1] - int(k[1])
         # print(offset)
-        kpt_int = kpt_change.astype(np.int)[:,[1,0]]
+        kpt_int = kpt_change.astype(np.int)[:, [1, 0]]
         labels = np.column_stack((labels, offset, kpt_int))
         heatmaps = self.generateHeatmap(kpt_change)
 
         # self.show(heatmaps, inp, inp_img, kpt_int, kpt_change_pre)
-        return inp[np.newaxis,:,:], heatmaps.astype(np.float32),np.array(labels).astype(np.float32)
+        return self.transforms(inp[np.newaxis, :, :]), heatmaps.astype(np.float32), np.array(labels).astype(np.float32)
 
     def show(self, heatmaps, inp, inp_img, kpt_change, kpt_change_pre):
         show_inp = cv2.resize(inp, (self.output_res, self.output_res))
@@ -133,11 +133,11 @@ class Dataset(torch.utils.data.Dataset):
         # random hue and saturation
         data = cv2.cvtColor(data, cv2.COLOR_RGB2HSV);
         delta = (np.random.random() * 2 - 1) * 0.2
-        data[:, :, 0] = np.mod(data[:,:,0] + (delta * 360 + 360.), 360.)
+        data[:, :, 0] = np.mod(data[:, :, 0] + (delta * 360 + 360.), 360.)
 
         delta_sature = np.random.random() + 0.5
         data[:, :, 1] *= delta_sature
-        data[:,:, 1] = np.maximum( np.minimum(data[:,:,1], 1), 0 )
+        data[:, :, 1] = np.maximum(np.minimum(data[:, :, 1], 1), 0)
         data = cv2.cvtColor(data, cv2.COLOR_HSV2RGB)
 
         # adjust brightness
@@ -163,25 +163,32 @@ def init(config):
     info_name = r'/info.csv'
     iters = config['train']['train_iters']
     batch_size = config['train']['batchsize']
+    tans = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize([0.5], [0.5])
+    ])
+    train_db = Dataset(config, ds.Lumbar(train_data_dir, annot_path, info_name), iters * batch_size, 150, True,tans)
+    valid_db = Dataset(config, ds.Lumbar(valid_data_dir, annot_path, info_name),
+                       config['train']['valid_iters'] * batch_size, 51, True,tans)
 
-    train_db = Dataset(config, ds.Lumbar(train_data_dir, annot_path, info_name), iters*batch_size, 150,True)
-    valid_db = Dataset(config, ds.Lumbar(valid_data_dir, annot_path, info_name), config['train']['valid_iters']*batch_size, 51,True)
-
-    dataset = {'train':train_db,'valid':valid_db}
+    dataset = {'train': train_db, 'valid': valid_db}
 
     loaders = {}
     for key in dataset:
-        loaders[key] = torch.utils.data.DataLoader(dataset[key], batch_size=batchsize, shuffle=True, num_workers=config['train']['num_workers'], pin_memory=False)
+        loaders[key] = torch.utils.data.DataLoader(dataset[key], batch_size=batchsize, shuffle=True,
+                                                   num_workers=config['train']['num_workers'], pin_memory=False)
 
     return loaders
 
+
 if __name__ == '__main__':
     import task.pose
+
     config = task.pose.__config__
     annot_path = r'/annotation.json'
     train_data_dir = r'E:\data\lumbar_train51\train'
     info_name = r'/info.csv'
     size = config['train']['epoch_num'] * config['train']['data_num']
 
-    train_db = Dataset(config, ds.Lumbar(train_data_dir, annot_path, info_name), size, 150,True)
+    train_db = Dataset(config, ds.Lumbar(train_data_dir, annot_path, info_name), size, 150, True)
     train_db.loadImage(10)

@@ -69,8 +69,8 @@ class PoseNet(nn.Module):
 
     def forward(self, imgs):
         ## our posenet
-        # x = imgs.permute(0, 3, 1, 2) #x of size 1,3,inpdim,inpdim
-        x = self.pre(imgs)
+        x = imgs.permute(0, 2, 1, 3) #x of size 1,3,inpdim,inpdim
+        x = self.pre(x)
         combined_hm_preds = []
         for i in range(self.nstack):
             hg = self.hgs[i](x)
