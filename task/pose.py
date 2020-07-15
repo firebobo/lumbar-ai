@@ -32,7 +32,7 @@ __config__ = {
         'output_res': 64,
         'epoch_num': 1000000,
         'data_num': 150,
-        'train_iters': 1000,
+        'train_iters': 10,
         'valid_iters': 10,
         'learning_rate': 1e-3,
         'max_num_people': 1,
@@ -41,7 +41,7 @@ __config__ = {
             ['combined_lb_loss', 1]
         ],
         'stack_loss': [1, 2, 3, 4],
-        'decay_iters': 5000,
+        'decay_iters': 1000,
         'decay_lr': 0.8,
         'num_workers': 2,
         'use_data_loader': True,
@@ -87,7 +87,7 @@ def make_network(configs):
     poseNet = PoseNet(configs["cfg"],True)
     forward_net = DataParallel(poseNet.cuda())
     config['net'] = forward_net
-    config['lossLayers'] = KeypointLoss(configs['inference']['num_parts'], configs['inference']['nstack'],
+    config['lossLayers'] = KeypointLoss(configs['inference']['num_parts'], 2,
                                         configs['inference']['num_class'])
     ## optimizer, experiment setup
     train_cfg['optimizer'] = torch.optim.Adam(filter(lambda p: p.requires_grad, config['net'].parameters()),
@@ -103,7 +103,11 @@ def make_network(configs):
     def make_train(batch_id, config, phase, **inputs):
         for i in inputs:
             try:
-                inputs[i] = make_input(inputs[i])
+                if type(inputs[i]) is list:
+                    for j, input in enumerate(inputs[i]):
+                        inputs[i][j] = make_input(input)
+                else:
+                    inputs[i] = make_input(inputs[i])
             except:
                 pass  # for last input, which is a string (id_)
 
@@ -114,43 +118,34 @@ def make_network(configs):
         if phase != 'inference':
             combined_preds = net(inputs['imgs'])
 
-            all_loss = config['inference']["lossLayers"](combined_preds[0],
+            all_loss = config['inference']["lossLayers"](combined_preds,
                                                          **{i: inputs[i] for i in inputs if i != 'imgs'})
             num_loss = len(config['train']['loss'])
 
             losses = [all_loss[idx].float().cpu()* i[1] for idx, i in enumerate(config['train']['loss'])]
 
-            loss = 0
-            my_loss = []
             toprint = '\n{}: '.format(batch_id)
-            for i, l in enumerate(losses):
-                loss += torch.sum(l)
-                my_loss.append(l)
-
-            if len(my_loss) == 1:
-                toprint += ' {}: {}'.format(i, format(my_loss, '.8f'))
+            if batch_id % 100 == 0:
+                toprint += ' \n{}\n{}'.format(losses[0],losses[1])
             else:
-                for j in my_loss:
-                    if batch_id % 100 == 0:
-                        toprint += ' \n{}'.format(format(str(j)))
-                    else:
-                        toprint += ' {}'.format(format(j.sum(), '.8f'))
+                toprint += ' {}  {}'.format(format(losses[0].sum(), '.8f'),format(losses[1].sum(), '.8f'))
             logger.write(toprint)
             logger.flush()
-
             if phase == 'train':
                 optimizer = train_cfg['optimizer']
                 optimizer.zero_grad()
+                loss = losses[0].sum()+losses[1].sum()
                 loss.backward()
                 optimizer.step()
             elif phase == 'valid':
-                loss = losses[-1].sum()
+                loss = (losses[0][:,-1]+losses[1][:,-1]).sum()
+                # return float(loss)
                 # result = build_targets(combined_hm_preds, combined_lb_preds)
             if batch_id % config['train']['decay_iters'] == 0:
                 ## decrease the learning rate after decay # iterations
                 for param_group in train_cfg['optimizer'].param_groups:
                     param_group['lr'] = config['train']['decay_lr'] * param_group['lr']
-            return loss.item()
+            # return None
         else:
             net = net.eval()
             combined_preds = net(inputs['imgs'])

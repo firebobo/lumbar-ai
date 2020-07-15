@@ -90,18 +90,21 @@ MODEL:
       - 384
       FUSE_METHOD: SUM
     DECONV:
-      NUM_DECONVS: 0
+      NUM_DECONVS: 2
       NUM_CHANNELS:
+      - 96
       - 48
       KERNEL_SIZE:
+      - 4
       - 4
       NUM_BASIC_BLOCKS: 4
       CAT_OUTPUT:
       - True
+      - True
   INIT_WEIGHTS: True
   NAME: pose_higher_hrnet
   NUM_JOINTS: 11
-  NUM_TAG: 11
+  NUM_TAG: 7
   PRETRAINED: 'models/pytorch/imagenet/hrnet_w48-8ef0771d.pth'
   TAG_PER_JOINT: True
 TEST:

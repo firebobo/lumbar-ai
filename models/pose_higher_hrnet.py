@@ -301,19 +301,23 @@ class PoseHigherResolutionNet(nn.Module):
         self.final_layers = self._make_final_layers(cfg, pre_stage_channels[0])
         self.deconv_layers = self._make_deconv_layers(
             cfg, pre_stage_channels[0])
-
+        self.label_layers = nn.ModuleList([
+            nn.Sequential(
+                nn.Linear((extra.STEM_INPLANES*extra.STEM_INPLANES)*(2**(2*i)), cfg.MODEL.NUM_TAG),
+                nn.Sigmoid()
+            ) for i in range(extra.DECONV.NUM_DECONVS+1)])
         self.num_deconvs = extra.DECONV.NUM_DECONVS
         self.deconv_config = cfg.MODEL.EXTRA.DECONV
         self.loss_config = cfg.LOSS
-
+        self.tag_num = cfg.MODEL.NUM_TAG
+        self.joint_num = cfg.MODEL.NUM_JOINTS
         self.pretrained_layers = cfg['MODEL']['EXTRA']['PRETRAINED_LAYERS']
 
     def _make_final_layers(self, cfg, input_channels):
-        dim_tag = cfg.MODEL.NUM_TAG
         extra = cfg.MODEL.EXTRA
 
         final_layers = []
-        output_channels = cfg.MODEL.NUM_JOINTS + dim_tag
+        output_channels = cfg.MODEL.NUM_JOINTS*2
         final_layers.append(nn.Conv2d(
             in_channels=input_channels,
             out_channels=output_channels,
@@ -325,8 +329,6 @@ class PoseHigherResolutionNet(nn.Module):
         deconv_cfg = extra.DECONV
         for i in range(deconv_cfg.NUM_DECONVS):
             input_channels = deconv_cfg.NUM_CHANNELS[i]
-            output_channels = cfg.MODEL.NUM_JOINTS + dim_tag \
-                if cfg.LOSS.WITH_AE_LOSS[i+1] else cfg.MODEL.NUM_JOINTS
             final_layers.append(nn.Conv2d(
                 in_channels=input_channels,
                 out_channels=output_channels,
@@ -338,15 +340,13 @@ class PoseHigherResolutionNet(nn.Module):
         return nn.ModuleList(final_layers)
 
     def _make_deconv_layers(self, cfg, input_channels):
-        dim_tag = cfg.MODEL.NUM_JOINTS if cfg.MODEL.TAG_PER_JOINT else 1
         extra = cfg.MODEL.EXTRA
         deconv_cfg = extra.DECONV
 
         deconv_layers = []
         for i in range(deconv_cfg.NUM_DECONVS):
             if deconv_cfg.CAT_OUTPUT[i]:
-                final_output_channels = cfg.MODEL.NUM_JOINTS + dim_tag \
-                    if cfg.LOSS.WITH_AE_LOSS[i] else cfg.MODEL.NUM_JOINTS
+                final_output_channels = cfg.MODEL.NUM_JOINTS *2
                 input_channels += final_output_channels
             output_channels = deconv_cfg.NUM_CHANNELS[i]
             deconv_kernel, padding, output_padding = \
@@ -504,9 +504,12 @@ class PoseHigherResolutionNet(nn.Module):
         y_list = self.stage4(x_list)
 
         final_outputs = []
+        label_outputs = []
         x = y_list[0]
         y = self.final_layers[0](x)
-        final_outputs.append(y)
+        final_outputs.append(y[:,:self.joint_num])
+        label_x = y[:,self.joint_num:].view(y.shape[0],self.joint_num,-1)
+        label_outputs.append(self.label_layers[0](label_x))
 
         for i in range(self.num_deconvs):
             if self.deconv_config.CAT_OUTPUT[i]:
@@ -514,9 +517,11 @@ class PoseHigherResolutionNet(nn.Module):
 
             x = self.deconv_layers[i](x)
             y = self.final_layers[i+1](x)
-            final_outputs.append(y)
+            final_outputs.append(y[:, :self.joint_num])
+            label_x = y[:, self.joint_num:].view(y.shape[0], self.joint_num, -1)
+            label_outputs.append(self.label_layers[i+1](label_x))
 
-        return final_outputs
+        return final_outputs,label_outputs
 
     def init_weights(self, pretrained='', verbose=True):
         logger.info('=> init weights from normal distribution')

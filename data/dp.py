@@ -49,8 +49,8 @@ class Dataset(torch.utils.data.Dataset):
         self.input_res = config['train']['input_res']
         self.output_res = config['train']['output_res']
         self.size = size
-        self.num_deconvs = config['cif'].MODEL.EXTRA.DECONV.NUM_DECONVS
-        self.generateHeatmap = [GenerateHeatmap(self.output_res*(i+1), config['inference']['num_parts']) for i in (self.num_deconvs+1)]
+        self.num_deconvs = config['cfg'].MODEL.EXTRA.DECONV.NUM_DECONVS
+        self.generateHeatmap = [GenerateHeatmap(int(self.output_res*(2**(i))), config['inference']['num_parts']) for i in range(self.num_deconvs+1)]
         self.ds = ds
         self.index = index
         self.is_deal = is_deal
@@ -107,7 +107,7 @@ class Dataset(torch.utils.data.Dataset):
         # print(offset)
         kpt_int = kpt_change.astype(np.int)[:,[1,0]]
         # labels = np.column_stack((labels, kpt_change))
-        heatmaps = [self.generateHeatmap[i](kpt_change**(i+1)) for i in (self.num_deconvs+1)]
+        heatmaps = [self.generateHeatmap[i](kpt_change*(2**i)) for i in range(self.num_deconvs+1)]
 
         # self.show(heatmaps, inp, inp_img, kpt_int, kpt_change_pre)
         return inp[np.newaxis,:,:], heatmaps,np.array(labels).astype(np.float32)
