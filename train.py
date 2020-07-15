@@ -70,7 +70,6 @@ def save_checkpoint(state, is_best, filename='checkpoint.pt'):
         shutil.copyfile(filename, basename + '/model_best.pt')
 
 
-
 def save(config, is_best=False):
     resume = os.path.join('exp', config['opt'].exp)
     if config['opt'].exp == 'pose' and config['opt'].continue_exp is not None:
@@ -95,11 +94,11 @@ def train(train_func, data_loaders, config, post_epoch=None):
         if 'epoch_num' in config['train']:
             if config['train']['epoch'] > config['train']['epoch_num']:
                 break
-        do_train(config['train']['epoch'],config,data_loaders['train'])
-        mean_loss = do_valid(config['train']['epoch'],config,data_loaders['valid'])
+        do_train(config['train']['epoch'], config, data_loaders['train'])
+        mean_loss = do_valid(config['train']['epoch'], config, data_loaders['valid'])
         config['train']['epoch'] += 1
         config['train']['scheduler'].step()
-        print('valid loss:',save_loss,mean_loss)
+        print('valid loss:', save_loss, mean_loss)
         if mean_loss < save_loss:
             save_loss = mean_loss
             save(config, True)

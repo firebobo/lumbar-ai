@@ -9,6 +9,7 @@ from PIL import Image
 from torchvision.transforms import Compose, Resize, ToTensor
 
 from data import ref
+from task.pose import do_test
 from utils.group import HeatmapParser
 import utils.img
 import glob
@@ -155,7 +156,7 @@ def test():
             img = inp_img[np.newaxis, np.newaxis, :, :]
             img = torch.from_numpy(img).cuda()
 
-            out = run_func(key, config, "inference", **{'imgs': img})
+            out = do_test({'imgs':img},config)
             for o in out:
                 data = {}
                 data['seriesUid'] = frame_info[2]
