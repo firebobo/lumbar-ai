@@ -7,6 +7,8 @@ import numpy as np
 from torch import nn
 import os
 from torch.nn import DataParallel
+from torch.optim import lr_scheduler
+from tqdm import tqdm
 
 from task.loss import KeypointLoss
 from utils.misc import make_input, make_output, importNet
@@ -30,7 +32,7 @@ __config__ = {
         'batchsize': 32,
         'input_res': 256,
         'output_res': 64,
-        'epoch_num': 1000000,
+        'epoch_num': 300,
         'data_num': 150,
         'train_iters': 10,
         'valid_iters': 10,
@@ -41,8 +43,8 @@ __config__ = {
             ['combined_lb_loss', 1]
         ],
         'stack_loss': [1, 2, 3, 4],
-        'decay_iters': 1000,
-        'decay_lr': 0.8,
+        'decay_iters': 5,
+        'decay_lr': 0.1,
         'num_workers': 2,
         'use_data_loader': True,
         'train_num_eval': 150,
@@ -54,26 +56,28 @@ __config__ = {
 def build_targets(heatmap, labelmap):
     # print(gt.shape)
     size = heatmap.shape
-    targets = np.zeros([size[0], size[1], 4])
+    targets = np.zeros([size[0], size[1], size[2], 4])
 
-    m = size[2]
-    n = size[3]
+    m = size[3]
+    n = size[4]
+    labelmap = labelmap.contiguous().view(labelmap.shape[0], labelmap.shape[1], labelmap.shape[2], -1)
     for idx, g in enumerate(heatmap):
-        for kdx, ggg in enumerate(g):
-            a = heatmap[idx, kdx]
-            index = int(a.argmax())
-            x = int(index / n)
-            y = index % n
-            targets[idx, kdx, 0] = a[x, y]
-            targets[idx, kdx, 1:3] = [x + labelmap[idx, 7, x, y], y + labelmap[idx, 8, x, y]]
-            y_ = labelmap[idx, :, x, y]
-            if kdx % 2 == 0:
-                y_ = labelmap[idx, 2:7, x, y]
-                ind = y_.argmax()
-            else:
-                y_ = labelmap[idx, :2, x, y]
-                ind = y_.argmax()
-            targets[idx, kdx, 3] = ind + 1
+        for jdx, gg in enumerate(g):
+            for kdx, ggg in enumerate(gg):
+                a = heatmap[idx, jdx, kdx]
+                index = int(a.argmax())
+                x = int(index / n)
+                y = index % n
+                targets[idx, jdx, kdx, 0] = a[x, y]
+                targets[idx, jdx, kdx, 1:3] = [x + labelmap[idx, jdx, kdx, 7], y + labelmap[idx, jdx, kdx, 8]]
+                y_ = labelmap[idx, jdx, kdx, :]
+                if kdx % 2 == 0:
+                    y_ = labelmap[idx, jdx, kdx, 2:7]
+                    ind = y_.argmax()
+                else:
+                    y_ = labelmap[idx, jdx, kdx, :2]
+                    ind = y_.argmax()
+                targets[idx, jdx, kdx, 3] = ind + 1
 
         return targets  ## l of dim bsize
 
@@ -90,69 +94,97 @@ def make_network(configs):
     config['lossLayers'] = KeypointLoss(configs['inference']['num_parts'], 2,
                                         configs['inference']['num_class'])
     ## optimizer, experiment setup
-    train_cfg['optimizer'] = torch.optim.Adam(filter(lambda p: p.requires_grad, config['net'].parameters()),
-                                              train_cfg['learning_rate'])
-
+    train_cfg['optimizer'] = torch.optim.Adam(config['net'].parameters(), train_cfg['learning_rate'])
+    train_cfg['scheduler'] = lr_scheduler.StepLR(train_cfg['optimizer'], step_size=train_cfg['decay_iters'],
+                                                 gamma=train_cfg[
+                                                     'decay_lr'])  # 更新学习率的策略：  每隔step_size个epoch就将学习率降为原来的gamma倍。
     exp_path = os.path.join('exp', configs['opt'].exp)
     if configs['opt'].exp == 'pose' and configs['opt'].continue_exp is not None:
         exp_path = os.path.join('exp', configs['opt'].continue_exp)
     if not os.path.exists(exp_path):
         os.mkdir(exp_path)
     logger = open(os.path.join(exp_path, 'log'), 'a+')
+    config['logger'] = logger
 
-    def make_train(batch_id, config, phase, **inputs):
-        for i in inputs:
+
+def do_train(epoch, config, loader):
+    logger = config['inference']['logger']
+    net = config['inference']['net']
+
+    batch_idx = 0
+    for inputs in tqdm(loader):
+        for i, input in enumerate(inputs):
             try:
                 if type(inputs[i]) is list:
-                    for j, input in enumerate(inputs[i]):
-                        inputs[i][j] = make_input(input)
+                    for ind, inp in enumerate(inputs[i]):
+                        inputs[i][ind] = make_input(inp)
                 else:
                     inputs[i] = make_input(inputs[i])
             except:
                 pass  # for last input, which is a string (id_)
 
-        net = config['inference']['net']
-        config['batch_id'] = batch_id
-        net = net.train()
+        combined_preds = net(inputs[0])
+        combined_loss, labels_loss = config['inference']["lossLayers"](combined_preds,
+                                                                       **{'heatmaps': inputs[1], 'labels': inputs[2]})
+        num_loss = len(config['train']['loss'])
 
-        if phase != 'inference':
-            combined_preds = net(inputs['imgs'])
+        # losses = [all_loss[idx].cpu()*i[1] for idx, i in enumerate(config['train']['loss'])]
+        heatmap_loss = torch.sum(combined_loss.cpu().mul(torch.Tensor(config['train']['stack_loss'])))
+        label_loss = torch.sum(labels_loss.cpu().mul(torch.Tensor(config['train']['stack_loss'])))
+        toprint = '\n{} {}: '.format(epoch, batch_idx)
 
-            all_loss = config['inference']["lossLayers"](combined_preds,
-                                                         **{i: inputs[i] for i in inputs if i != 'imgs'})
-            num_loss = len(config['train']['loss'])
+        if batch_idx % 100 == 0:
+            toprint += ' \n{}'.format(str(combined_loss.cpu()))
+            toprint += ' \n{}'.format(str(labels_loss.cpu()))
+        else:
+            toprint += ' {},{}'.format(heatmap_loss, label_loss)
 
-            losses = [all_loss[idx].float().cpu()* i[1] for idx, i in enumerate(config['train']['loss'])]
+        logger.write(toprint)
+        logger.flush()
+        optimizer = config['train']['optimizer']
+        optimizer.zero_grad()
+        loss = heatmap_loss + label_loss
+        loss.backward()
+        optimizer.step()
+        batch_idx += 1
 
-            toprint = '\n{}: '.format(batch_id)
-            if batch_id % 100 == 0:
-                toprint += ' \n{}\n{}'.format(losses[0],losses[1])
+
+def do_valid(epoch, config, loader):
+    logger = config['inference']['logger']
+    net = config['inference']['net']
+    run_loss = 0
+    with torch.no_grad():
+        batch_idx = 0
+        for inputs in tqdm(loader):
+            for i, input in enumerate(inputs):
+                if type(inputs[i]) is list:
+                    for ind, inp in enumerate(inputs[i]):
+                        inputs[i][ind] = make_input(inp)
+                else:
+                    inputs[i] = make_input(inputs[i])
+
+            combined_preds = net(inputs[0])
+            combined_loss, labels_loss = config['inference']["lossLayers"](combined_preds, **{'heatmaps': inputs[1],
+                                                                                              'labels': inputs[2]})
+            loss = labels_loss[:, -1].sum() + combined_loss[:, -1].sum()
+
+            toprint = '\n{} {}: '.format(epoch, batch_idx)
+            heatmap_loss = torch.sum(combined_loss.cpu().mul(torch.Tensor(config['train']['stack_loss'])))
+            label_loss = torch.sum(labels_loss.cpu().mul(torch.Tensor(config['train']['stack_loss'])))
+            if batch_idx % 100 == 0:
+                toprint += ' \n{}'.format(str(combined_loss.cpu()))
+                toprint += ' \n{}'.format(str(labels_loss.cpu()))
             else:
-                toprint += ' {}  {}'.format(format(losses[0].sum(), '.8f'),format(losses[1].sum(), '.8f'))
+                toprint += ' {},{}'.format(heatmap_loss, label_loss)
             logger.write(toprint)
             logger.flush()
-            if phase == 'train':
-                optimizer = train_cfg['optimizer']
-                optimizer.zero_grad()
-                loss = losses[0].sum()+losses[1].sum()
-                loss.backward()
-                optimizer.step()
-            elif phase == 'valid':
-                loss = (losses[0][:,-1]+losses[1][:,-1]).sum()
-                # return float(loss)
-                # result = build_targets(combined_hm_preds, combined_lb_preds)
-            if batch_id % config['train']['decay_iters'] == 0:
-                ## decrease the learning rate after decay # iterations
-                for param_group in train_cfg['optimizer'].param_groups:
-                    param_group['lr'] = config['train']['decay_lr'] * param_group['lr']
-            # return None
-        else:
-            net = net.eval()
-            combined_preds = net(inputs['imgs'])
-            combined_preds = make_output(combined_preds)
-            result = build_targets(combined_preds[0][:, :config['inference']['num_parts']],
-                                   combined_preds[0][:, config['inference']['num_parts']:])
-            out = result
-            return out
+            batch_idx += 1
+            run_loss += loss.float().item()
+    return run_loss
 
-    return make_train
+def do_test(inputs, config):
+    net = config['inference']['net']
+    combined_preds = net(inputs['imgs'])
+    result = build_targets(combined_preds[:, :, :config['inference']['num_parts']],
+                           combined_preds[:, :, config['inference']['num_parts']:])
+    return result

@@ -1,10 +1,12 @@
 import os
 import shutil
 
-import tqdm
+from tqdm import tqdm
 from os.path import dirname
 
 import torch.backends.cudnn as cudnn
+
+from task.pose import do_train, do_valid
 
 cudnn.benchmark = True
 cudnn.enabled = True
@@ -96,35 +98,21 @@ def save(config, is_best=False):
     print('=> save checkpoint')
 
 
-def train(train_func, data_func, config, post_epoch=None):
+def train(train_func, data_loaders, config, post_epoch=None):
     save_loss = 1e10
+    net = config['inference']['net']
+    config['inference']['net'] = net.train()
     while True:
         fails = 0
-        print('epoch: ', config['train']['epoch'])
+        tqdm.write('Epoch {}/{}'.format(config['train']['epoch'], config['train']['epoch_num'] - 1))
         if 'epoch_num' in config['train']:
             if config['train']['epoch'] > config['train']['epoch_num']:
                 break
-
-        all_loss = 0
-        for phase in ['train', 'valid']:
-            num_step = config['train']['{}_iters'.format(phase)]
-            generator = data_func(phase)
-            print('start', phase, config['opt'].exp)
-
-            show_range = range(num_step)
-            show_range = tqdm.tqdm(show_range, total=num_step, ascii=True)
-            batch_id = num_step * config['train']['epoch']
-            if batch_id > config['opt'].max_iters * 1000:
-                return
-            losses = []
-            for i in show_range:
-                datas = next(generator)
-                loss = train_func(batch_id + i, config, phase, **datas)
-                losses.append(loss)
-                # print('epoch: {}; step: {}; loss: {}'.format(config['train']['epoch'],batch_id+i,loss))
+        do_train(config['train']['epoch'], config, data_loaders['train'])
+        mean_loss = do_valid(config['train']['epoch'], config, data_loaders['valid'])
         config['train']['epoch'] += 1
-        mean_loss = np.mean(np.array(losses))
-        print('valid loss:',save_loss,mean_loss)
+        config['train']['scheduler'].step()
+        print('valid loss:', save_loss, mean_loss)
         if mean_loss < save_loss:
             save_loss = mean_loss
             save(config, True)
@@ -162,8 +150,8 @@ def init():
 
 def main():
     func, config = init()
-    data_func = config['data_provider'].init(config)
-    train(func, data_func, config)
+    data_loaders = config['data_provider'].init(config)
+    train(func, data_loaders, config)
     print(datetime.now(timezone('EST')))
 
 
