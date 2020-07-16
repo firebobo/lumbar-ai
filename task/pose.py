@@ -43,7 +43,7 @@ __config__ = {
             ['combined_lb_loss', 1]
         ],
         'stack_loss': [1, 2, 3, 4],
-        'decay_iters': 2000,
+        'decay_iters': 5,
         'decay_lr': 0.1,
         'num_workers': 2,
         'use_data_loader': True,
@@ -150,6 +150,7 @@ def do_train(epoch, config, loader):
 
 
 def do_valid(epoch, config, loader):
+    logger = config['inference']['logger']
     net = config['inference']['net']
     run_loss = 0
     with torch.no_grad():
@@ -175,6 +176,8 @@ def do_valid(epoch, config, loader):
                 toprint += ' \n{}'.format(str(labels_loss.cpu()))
             else:
                 toprint += ' {},{}'.format(heatmap_loss, label_loss)
+            logger.write(toprint)
+            logger.flush()
             batch_idx += 1
             run_loss += loss.float().item()
     return run_loss
