@@ -94,16 +94,19 @@ class Dataset(torch.utils.data.Dataset):
 
         inp_img = cv2.resize(orig_img, (self.input_res, self.input_res))
         if self.is_deal:
-            scale = (np.random.random() - 0.5) * 0.5 + 1
+            scale = random.uniform(0.75, 1.25)
 
-            aug_rot = (np.random.random() - .5) * 40
-            center = kpt_change_pre[int(np.random.random() * keypoints.shape[0])]
+            aug_rot = random.uniform(-20, 20)
+            center = kpt_change_pre[random.randint(0,  keypoints.shape[0])]
 
-            center = center * ((np.random.random() - 0.5) * 0.5 + 1)
+            center = center * random.uniform(0.75, 1.25)
 
             mat = cv2.getRotationMatrix2D((center[1], center[0]), aug_rot, scale)
+            img_scale_poss = [random.uniform(0.75, 1.25),random.uniform(0.75, 1.25)]
 
-            inp = cv2.warpAffine(inp_img, mat, (self.input_res, self.input_res)).astype(np.float32)
+            resize = [int(self.input_res*img_scale_poss[0]), int(self.input_res*img_scale_poss[1])]
+            inp = cv2.warpAffine(inp_img, mat,(resize[0],resize[1])).astype(np.float32)
+            inp = cv2.resize(inp, (self.input_res, self.input_res))
 
             inp = random_contrast(inp, 0.5, 1)
             inp = random_brightness(inp, 32)
@@ -113,6 +116,9 @@ class Dataset(torch.utils.data.Dataset):
             ## generate heatmaps on outres
 
             kpt_affine = utils.img.kpt_affine(kpt_change_pre, mat)
+
+            mat_mask_poss = utils.img.get_transform_mat([0, 0],[self.input_res/resize[0],self.input_res/resize[1]] , 0)
+            kpt_affine = utils.img.kpt_change(kpt_affine, mat_mask_poss)
         else:
             kpt_affine = kpt_change_pre
             inp = inp_img.astype(np.float32)
@@ -129,16 +135,17 @@ class Dataset(torch.utils.data.Dataset):
         labels = np.column_stack((labels, offset, kpt_int))
         heatmaps = self.generateHeatmap(kpt_change)
         if self.is_show:
-            self.show(heatmaps, inp, inp_img, kpt_int, kpt_change_pre)
+            self.show(heatmaps, inp, inp_img, kpt_int, kpt_affine, kpt_change_pre)
         return self.transforms(inp[np.newaxis, :, :]), heatmaps.astype(np.float32), np.array(labels).astype(np.float32)
 
-    def show(self, heatmaps, inp, inp_img, kpt_change, kpt_change_pre):
+    def show(self, heatmaps, inp, inp_img, kpt_change, kpt_affine, kpt_change_pre):
         show_inp = cv2.resize(inp, (self.output_res, self.output_res))
         heatmaps_show = np.zeros([self.output_res, self.output_res])
         for ind, k in enumerate(kpt_change):
             if k[0] <= 0 or k[1] <= 0 or k[0] >= self.output_res or k[1] >= self.output_res:
                 continue
             show_inp[k[0], k[1]] = 255
+            inp[int(kpt_affine[ind][1]), int(kpt_affine[ind][0])] = 255
             heatmaps_show += heatmaps[ind, :, :]
         plt.imshow(heatmaps_show)
         plt.show()
