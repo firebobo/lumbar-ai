@@ -45,8 +45,24 @@ class GenerateHeatmap():
         return hms
 
 
+def random_contrast(image, lower=0.5, upper=1.5):
+    if random.randint(0, 2):
+        # 生成随机因子
+        alpha = random.uniform(lower, upper)
+        image *= alpha
+    return image
+
+
+def random_brightness(image, delta=32):
+    if random.randint(0, 2):
+        delta = random.uniform(-delta, delta)
+        # 图像中的每个像素加上一个随机值
+        image += delta
+    return image
+
+
 class Dataset(torch.utils.data.Dataset):
-    def __init__(self, config, ds, size, index, is_deal, transforms):
+    def __init__(self, config, ds, size, index, is_deal, transforms, is_show=False):
         self.input_res = config['train']['input_res']
         self.output_res = config['train']['output_res']
         self.size = size
@@ -55,6 +71,7 @@ class Dataset(torch.utils.data.Dataset):
         self.index = index
         self.is_deal = is_deal
         self.transforms = transforms
+        self.is_show = is_show
 
     def __len__(self):
         return self.size
@@ -75,18 +92,24 @@ class Dataset(torch.utils.data.Dataset):
         mat_mask_pre = utils.img.get_transform_mat([0, 0], img_aug_scale, 0)
         kpt_change_pre = utils.img.kpt_change(keypoints, mat_mask_pre)
 
-        center = kpt_change_pre[int(np.random.random() * keypoints.shape[0])]
         inp_img = cv2.resize(orig_img, (self.input_res, self.input_res))
         if self.is_deal:
-            scale = np.random.random() * 0.4 + 0.8
+            scale = (np.random.random() - 0.5) * 0.5 + 1
 
             aug_rot = (np.random.random() - .5) * 40
+            center = kpt_change_pre[int(np.random.random() * keypoints.shape[0])]
 
-            diff = (np.random.random((self.input_res, self.input_res)) - .5) * 20
-            inp_img = inp_img + diff
+            center = center * ((np.random.random() - 0.5) * 0.5 + 1)
+
             mat = cv2.getRotationMatrix2D((center[1], center[0]), aug_rot, scale)
 
             inp = cv2.warpAffine(inp_img, mat, (self.input_res, self.input_res)).astype(np.float32)
+
+            inp = random_contrast(inp, 0.5, 1)
+            inp = random_brightness(inp, 32)
+            inp = random_contrast(inp, 1, 1.5)
+            inp = random_brightness(inp, 32)
+            inp = inp.clip(0, 255)
             ## generate heatmaps on outres
 
             kpt_affine = utils.img.kpt_affine(kpt_change_pre, mat)
@@ -105,8 +128,8 @@ class Dataset(torch.utils.data.Dataset):
         kpt_int = kpt_change.astype(np.int)[:, [1, 0]]
         labels = np.column_stack((labels, offset, kpt_int))
         heatmaps = self.generateHeatmap(kpt_change)
-
-        # self.show(heatmaps, inp, inp_img, kpt_int, kpt_change_pre)
+        if self.is_show:
+            self.show(heatmaps, inp, inp_img, kpt_int, kpt_change_pre)
         return self.transforms(inp[np.newaxis, :, :]), heatmaps.astype(np.float32), np.array(labels).astype(np.float32)
 
     def show(self, heatmaps, inp, inp_img, kpt_change, kpt_change_pre):
@@ -167,9 +190,9 @@ def init(config):
         transforms.ToTensor(),
         transforms.Normalize([0.5], [0.5])
     ])
-    train_db = Dataset(config, ds.Lumbar(train_data_dir, annot_path, info_name), iters * batch_size, 150, True,tans)
+    train_db = Dataset(config, ds.Lumbar(train_data_dir, annot_path, info_name), iters * batch_size, 150, True, tans)
     valid_db = Dataset(config, ds.Lumbar(valid_data_dir, annot_path, info_name),
-                       config['train']['valid_iters'] * batch_size, 51, True,tans)
+                       config['train']['valid_iters'] * batch_size, 51, True, tans)
 
     dataset = {'train': train_db, 'valid': valid_db}
 
@@ -189,6 +212,10 @@ if __name__ == '__main__':
     train_data_dir = r'E:\data\lumbar_train51\train'
     info_name = r'/info.csv'
     size = config['train']['epoch_num'] * config['train']['data_num']
+    tans = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize([0.5], [0.5])
+    ])
+    train_db = Dataset(config, ds.Lumbar(train_data_dir, annot_path, info_name), size, 150, True, tans, True)
 
-    train_db = Dataset(config, ds.Lumbar(train_data_dir, annot_path, info_name), size, 150, True)
-    train_db.loadImage(10)
+    train_db.loadImage(31)

@@ -30,7 +30,6 @@ class LabelLoss(torch.nn.Module):
 
         m = size[2]
         n = size[3]
-        pred = pred.contiguous().view(gt.shape[0], gt.shape[1], -1)
         for idx, g in enumerate(gt):
             l = torch.zeros((gt.shape[1]), dtype=float)
             for jdx, gg in enumerate(g):
@@ -43,7 +42,7 @@ class LabelLoss(torch.nn.Module):
                 # xy_loss = (gg[9] + gg[7] - x - pred[idx, jdx,7]) ** 2 + (
                 #             gg[10] + gg[8] - y - pred[idx, jdx,8]) ** 2
                 # conf_loss = (1 - a[x, y]) ** 2
-                class_loss = ((pred[idx, jdx, 0:9] - gg[0:9]) ** 2).sum()
+                class_loss = ((pred[idx, 0:9,x,y] - gg[0:9]) ** 2).sum()
                 l[jdx] = class_loss
                 # l[jdx] = xy_loss
             loss[idx] = l.sum()

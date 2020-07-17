@@ -46,8 +46,8 @@ def reload(config):
             checkpoint = torch.load(resume_file)
 
             config['inference']['net'].load_state_dict(checkpoint['state_dict'], False)
-            config['train']['optimizer'].load_state_dict(checkpoint['optimizer'])
-            config['train']['epoch'] = checkpoint['epoch']
+            # config['train']['optimizer'].load_state_dict(checkpoint['optimizer'])
+            # config['train']['epoch'] = checkpoint['epoch']
             config['train']['epoch'] = 0
             print("=> loaded checkpoint '{}' (epoch {})"
                   .format(resume, checkpoint['epoch']))
@@ -95,15 +95,17 @@ def train(train_func, data_loaders, config, post_epoch=None):
             if config['train']['epoch'] > config['train']['epoch_num']:
                 break
         do_train(config['train']['epoch'], config, data_loaders['train'])
-        mean_loss = do_valid(config['train']['epoch'], config, data_loaders['valid'])
+        do_train(config['train']['epoch'], config, data_loaders['valid'])
+        # mean_loss = do_valid(config['train']['epoch'], config, data_loaders['valid'])
         config['train']['epoch'] += 1
-        config['train']['scheduler'].step()
-        print('valid loss:', save_loss, mean_loss)
-        if mean_loss < save_loss:
-            save_loss = mean_loss
-            save(config, True)
-        else:
-            save(config)
+        save(config)
+        # config['train']['scheduler'].step()
+        # print('valid loss:', save_loss, mean_loss)
+        # if mean_loss < save_loss:
+        #     save_loss = mean_loss
+        #     save(config, True)
+        # else:
+        #     save(config)
 
 
 def init():

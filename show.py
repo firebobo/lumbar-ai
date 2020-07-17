@@ -55,11 +55,12 @@ try:
 except:
     info_result = read_info(trainPath)
     info_result.to_csv(trainPath + info_path, sep=',', header=True)
-with open('data-1594721882.6646216.json', 'r', encoding='utf-8') as f:
+with open('data-1594915179.9039655.json', 'r', encoding='utf-8') as f:
     study_result = json.load(f)
 for i, v in enumerate(study_result):
     for data_ in v['data']:
         instanceUid = data_['instanceUid']
+        print(instanceUid)
         loc_result = info_result.loc[info_result['instanceUid'] == instanceUid]
         orig_img = tcUtils.dicom2array(loc_result['dcmPath'].values[0])
         points = data_['annotation'][0]['data']['point']
@@ -67,7 +68,7 @@ for i, v in enumerate(study_result):
             print(p['coord'][1], p['coord'][0])
             if p['coord'][1]>orig_img.shape[0] or p['coord'][0]>orig_img.shape[1]:
                 continue
-            orig_img[p['coord'][1], p['coord'][0]] = 255
+            orig_img[p['coord'][1]-2:p['coord'][1]+2, p['coord'][0]-2:p['coord'][0]+2] = 255
         plt.imshow(orig_img)
         plt.title(instanceUid)
         plt.show()

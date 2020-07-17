@@ -34,8 +34,8 @@ __config__ = {
         'output_res': 64,
         'epoch_num': 300,
         'data_num': 150,
-        'train_iters': 1000,
-        'valid_iters': 10,
+        'train_iters': 150,
+        'valid_iters': 51,
         'learning_rate': 1e-3,
         'max_num_people': 1,
         'loss': [
@@ -43,8 +43,8 @@ __config__ = {
             ['combined_lb_loss', 1]
         ],
         'stack_loss': [1, 2, 3, 4],
-        'decay_iters': 5,
-        'decay_lr': 0.1,
+        'decay_iters': 10,
+        'decay_lr': 0.5,
         'num_workers': 2,
         'use_data_loader': True,
         'train_num_eval': 150,
@@ -60,7 +60,6 @@ def build_targets(heatmap, labelmap):
 
     m = size[3]
     n = size[4]
-    labelmap = labelmap.contiguous().view(labelmap.shape[0], labelmap.shape[1], labelmap.shape[2], -1)
     for idx, g in enumerate(heatmap):
         for jdx, gg in enumerate(g):
             for kdx, ggg in enumerate(gg):
@@ -69,13 +68,12 @@ def build_targets(heatmap, labelmap):
                 x = int(index / n)
                 y = index % n
                 targets[idx, jdx, kdx, 0] = a[x, y]
-                targets[idx, jdx, kdx, 1:3] = [x + labelmap[idx, jdx, kdx, 7], y + labelmap[idx, jdx, kdx, 8]]
-                y_ = labelmap[idx, jdx, kdx, :]
+                targets[idx, jdx, kdx, 1:3] = [x + labelmap[idx, jdx,7, x, y], y + labelmap[idx, jdx,8, x, y]]
                 if kdx % 2 == 0:
-                    y_ = labelmap[idx, jdx, kdx, 2:7]
+                    y_ = labelmap[idx, jdx, 2:7, x, y]
                     ind = y_.argmax()
                 else:
-                    y_ = labelmap[idx, jdx, kdx, :2]
+                    y_ = labelmap[idx, jdx, :2, x, y]
                     ind = y_.argmax()
                 targets[idx, jdx, kdx, 3] = ind + 1
 
@@ -96,8 +94,7 @@ def make_network(configs):
     ## optimizer, experiment setup
     train_cfg['optimizer'] = torch.optim.Adam(config['net'].parameters(), train_cfg['learning_rate'])
     train_cfg['scheduler'] = lr_scheduler.StepLR(train_cfg['optimizer'], step_size=train_cfg['decay_iters'],
-                                                 gamma=train_cfg[
-                                                     'decay_lr'])  # 更新学习率的策略：  每隔step_size个epoch就将学习率降为原来的gamma倍。
+                                                 gamma=train_cfg['decay_lr'])  # 更新学习率的策略：  每隔step_size个epoch就将学习率降为原来的gamma倍。
     exp_path = os.path.join('exp', configs['opt'].exp)
     if configs['opt'].exp == 'pose' and configs['opt'].continue_exp is not None:
         exp_path = os.path.join('exp', configs['opt'].continue_exp)
