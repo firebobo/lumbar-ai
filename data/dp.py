@@ -46,7 +46,7 @@ class GenerateHeatmap():
 
 
 def random_contrast(image, lower=0.5, upper=1.5):
-    if random.randint(0, 2):
+    if random.randint(0, 1):
         # 生成随机因子
         alpha = random.uniform(lower, upper)
         image *= alpha
@@ -54,7 +54,7 @@ def random_contrast(image, lower=0.5, upper=1.5):
 
 
 def random_brightness(image, delta=32):
-    if random.randint(0, 2):
+    if random.randint(0, 1):
         delta = random.uniform(-delta, delta)
         # 图像中的每个像素加上一个随机值
         image += delta
@@ -97,7 +97,7 @@ class Dataset(torch.utils.data.Dataset):
             scale = random.uniform(0.75, 1.25)
 
             aug_rot = random.uniform(-20, 20)
-            center = kpt_change_pre[random.randint(0,  keypoints.shape[0])]
+            center = kpt_change_pre[random.randint(0,  keypoints.shape[0]-1)]
 
             center = center * random.uniform(0.75, 1.25)
 

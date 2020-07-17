@@ -17,7 +17,7 @@ __config__ = {
     'data_provider': 'data.dp',
     'network': 'models.lumbarnet.PoseNet',
     'inference': {
-        'nstack': 4,
+        'nstack': 8,
         'inp_dim': 256,
         'oup_dim': 11,
         'num_parts': 11,
@@ -29,20 +29,20 @@ __config__ = {
     },
 
     'train': {
-        'batchsize': 32,
+        'batchsize': 16,
         'input_res': 256,
         'output_res': 64,
         'epoch_num': 300,
         'data_num': 150,
-        'train_iters': 150,
-        'valid_iters': 51,
-        'learning_rate': 1e-3,
+        'train_iters': 1500,
+        'valid_iters': 510,
+        'learning_rate': 1e-2,
         'max_num_people': 1,
         'loss': [
             ['combined_hm_loss', 1],
             ['combined_lb_loss', 1]
         ],
-        'stack_loss': [1, 2, 3, 4],
+        'stack_loss': [1, 2, 3, 4,5,6,7,8],
         'decay_iters': 10,
         'decay_lr': 0.5,
         'num_workers': 2,
