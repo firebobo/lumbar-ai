@@ -19,7 +19,6 @@ import logging
 import torch
 import torch.nn as nn
 
-
 BN_MOMENTUM = 0.1
 logger = logging.getLogger(__name__)
 
@@ -145,7 +144,7 @@ class HighResolutionModule(nn.Module):
                          stride=1):
         downsample = None
         if stride != 1 or \
-           self.num_inchannels[branch_index] != num_channels[branch_index] * block.expansion:
+                self.num_inchannels[branch_index] != num_channels[branch_index] * block.expansion:
             downsample = nn.Sequential(
                 nn.Conv2d(self.num_inchannels[branch_index],
                           num_channels[branch_index] * block.expansion,
@@ -193,12 +192,12 @@ class HighResolutionModule(nn.Module):
                                   0,
                                   bias=False),
                         nn.BatchNorm2d(num_inchannels[i]),
-                        nn.Upsample(scale_factor=2**(j-i), mode='nearest')))
+                        nn.Upsample(scale_factor=2 ** (j - i), mode='nearest')))
                 elif j == i:
                     fuse_layer.append(None)
                 else:
                     conv3x3s = []
-                    for k in range(i-j):
+                    for k in range(i - j):
                         if k == i - j - 1:
                             num_outchannels_conv3x3 = num_inchannels[i]
                             conv3x3s.append(nn.Sequential(
@@ -303,9 +302,9 @@ class PoseHigherResolutionNet(nn.Module):
             cfg, pre_stage_channels[0])
         self.label_layers = nn.ModuleList([
             nn.Sequential(
-                nn.Linear((extra.STEM_INPLANES*extra.STEM_INPLANES)*(2**(2*i)), cfg.MODEL.NUM_TAG),
+                nn.Linear((extra.STEM_INPLANES * extra.STEM_INPLANES) * (2 ** (2 * i)), cfg.MODEL.NUM_TAG),
                 nn.Sigmoid()
-            ) for i in range(extra.DECONV.NUM_DECONVS+1)])
+            ) for i in range(extra.DECONV.NUM_DECONVS + 1)])
         self.num_deconvs = extra.DECONV.NUM_DECONVS
         self.deconv_config = cfg.MODEL.EXTRA.DECONV
         self.loss_config = cfg.LOSS
@@ -317,7 +316,7 @@ class PoseHigherResolutionNet(nn.Module):
         extra = cfg.MODEL.EXTRA
 
         final_layers = []
-        output_channels = cfg.MODEL.NUM_JOINTS*2
+        output_channels = cfg.MODEL.NUM_JOINTS * 2
         final_layers.append(nn.Conv2d(
             in_channels=input_channels,
             out_channels=output_channels,
@@ -346,7 +345,7 @@ class PoseHigherResolutionNet(nn.Module):
         deconv_layers = []
         for i in range(deconv_cfg.NUM_DECONVS):
             if deconv_cfg.CAT_OUTPUT[i]:
-                final_output_channels = cfg.MODEL.NUM_JOINTS *2
+                final_output_channels = cfg.MODEL.NUM_JOINTS * 2
                 input_channels += final_output_channels
             output_channels = deconv_cfg.NUM_CHANNELS[i]
             deconv_kernel, padding, output_padding = \
@@ -409,10 +408,10 @@ class PoseHigherResolutionNet(nn.Module):
                     transition_layers.append(None)
             else:
                 conv3x3s = []
-                for j in range(i+1-num_branches_pre):
+                for j in range(i + 1 - num_branches_pre):
                     inchannels = num_channels_pre_layer[-1]
                     outchannels = num_channels_cur_layer[i] \
-                        if j == i-num_branches_pre else inchannels
+                        if j == i - num_branches_pre else inchannels
                     conv3x3s.append(nn.Sequential(
                         nn.Conv2d(
                             inchannels, outchannels, 3, 2, 1, bias=False),
@@ -471,6 +470,7 @@ class PoseHigherResolutionNet(nn.Module):
         return nn.Sequential(*modules), num_inchannels
 
     def forward(self, x):
+        x = x.permute(0, 2, 1, 3)
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
@@ -507,21 +507,17 @@ class PoseHigherResolutionNet(nn.Module):
         label_outputs = []
         x = y_list[0]
         y = self.final_layers[0](x)
-        final_outputs.append(y[:,:self.joint_num])
-        label_x = y[:,self.joint_num:].view(y.shape[0],self.joint_num,-1)
-        label_outputs.append(self.label_layers[0](label_x))
+        final_outputs.append(y)
 
         for i in range(self.num_deconvs):
             if self.deconv_config.CAT_OUTPUT[i]:
                 x = torch.cat((x, y), 1)
 
             x = self.deconv_layers[i](x)
-            y = self.final_layers[i+1](x)
-            final_outputs.append(y[:, :self.joint_num])
-            label_x = y[:, self.joint_num:].view(y.shape[0], self.joint_num, -1)
-            label_outputs.append(self.label_layers[i+1](label_x))
+            y = self.final_layers[i + 1](x)
+            final_outputs.append(y)
 
-        return final_outputs,label_outputs
+        return final_outputs
 
     def init_weights(self, pretrained='', verbose=True):
         logger.info('=> init weights from normal distribution')
@@ -555,7 +551,7 @@ class PoseHigherResolutionNet(nn.Module):
             need_init_state_dict = {}
             for name, m in pretrained_state_dict.items():
                 if name.split('.')[0] in self.pretrained_layers \
-                   or self.pretrained_layers[0] is '*':
+                        or self.pretrained_layers[0] is '*':
                     if name in parameters_names or name in buffers_names:
                         if verbose:
                             logger.info(

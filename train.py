@@ -30,8 +30,7 @@ def parse_command_line():
     # general
     parser.add_argument('--cfg',
                         help='experiment configure file name',
-                        required=True,
-                        default="",
+                        default="config/w48_640_adam_lr1e-3.yaml",
                         type=str)
 
     parser.add_argument('--opts',
@@ -59,9 +58,9 @@ def reload(config):
             checkpoint = torch.load(resume_file)
 
             config['inference']['net'].load_state_dict(checkpoint['state_dict'], False)
-            config['train']['optimizer'].load_state_dict(checkpoint['optimizer'])
-            config['train']['epoch'] = checkpoint['epoch']
-            # config['train']['epoch'] = 0
+            # config['train']['optimizer'].load_state_dict(checkpoint['optimizer'])
+            # config['train']['epoch'] = checkpoint['epoch']
+            config['train']['epoch'] = 0
             print("=> loaded checkpoint '{}' (epoch {})"
                   .format(resume, checkpoint['epoch']))
         else:
@@ -98,7 +97,7 @@ def save(config, is_best=False):
     print('=> save checkpoint')
 
 
-def train(train_func, data_loaders, config, post_epoch=None):
+def train(data_loaders, config, post_epoch=None):
     save_loss = 1e10
     net = config['inference']['net']
     config['inference']['net'] = net.train()
@@ -118,6 +117,8 @@ def train(train_func, data_loaders, config, post_epoch=None):
             save(config, True)
         else:
             save(config)
+        do_train(config['train']['epoch'], config, data_loaders['valid'])
+
 
 
 def init():
@@ -143,15 +144,15 @@ def init():
     config['opt'] = opt
     config['data_provider'] = importlib.import_module(config['data_provider'])
 
-    func = task.make_network(config)
+    task.make_network(config)
     reload(config)
-    return func, config
+    return config
 
 
 def main():
-    func, config = init()
+    config = init()
     data_loaders = config['data_provider'].init(config)
-    train(func, data_loaders, config)
+    train(data_loaders, config)
     print(datetime.now(timezone('EST')))
 
 

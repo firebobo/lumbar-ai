@@ -6,10 +6,11 @@ import torch
 import os
 
 from PIL import Image
-from torchvision.transforms import Compose, Resize, ToTensor
+from torchvision.transforms import Compose, Resize, ToTensor, transforms
 
 from data import ref
-from task import cfg,update_config
+from task import cfg, update_config
+from task.pose import do_test
 from train import parse_command_line
 from utils.group import HeatmapParser
 import utils.img
@@ -18,6 +19,7 @@ import json
 import re
 import pandas as pd
 from utils import tcUtils
+from utils.misc import importNet
 
 parser = HeatmapParser()
 
@@ -29,7 +31,6 @@ import torch
 import importlib
 import numpy as np
 import matplotlib.pyplot as plt
-
 
 
 def reload(config):
@@ -47,11 +48,13 @@ def reload(config):
             print("=> loading checkpoint '{}'".format(resume))
             checkpoint = torch.load(resume_file)
 
-            config['inference']['net'].load_state_dict(checkpoint['state_dict'])
-            config['train']['optimizer'].load_state_dict(checkpoint['optimizer'])
-            config['train']['epoch'] = checkpoint['epoch']
-            print("=> loaded checkpoint '{}' (epoch {})"
-                  .format(resume, checkpoint['epoch']))
+            from collections import OrderedDict
+            new_state_dict = OrderedDict()
+            for k, v in checkpoint['state_dict'].items():
+                name = k[7:]  # remove `module.`
+                new_state_dict[name] = v
+            # load params
+            config['inference']['net'].load_state_dict(new_state_dict)
         else:
             print("=> no checkpoint found at '{}'".format(resume))
             exit(0)
@@ -93,36 +96,49 @@ def init():
     """
     opt = parse_command_line()
     task = importlib.import_module('task.pose')
-    exp_path = os.path.join('exp', opt.exp)
 
-    current_time = datetime.now().strftime('%b%d_%H-%M-%S')
-
-    config = task.__config__
-
+    configs = task.__config__
+    configs['opt'] = opt
+    train_cfg = configs['train']
+    config = configs['inference']
 
     update_config(cfg, opt)
     config['cfg'] = cfg
+    ## creating new posenet
+    PoseNet = importNet(configs['network'])
+    poseNet = PoseNet(cfg,False)
 
-    try:
-        os.makedirs(exp_path)
-    except FileExistsError:
-        pass
+    config['net'] = poseNet
+    reload(configs)
 
-    config['opt'] = opt
-    config['data_provider'] = importlib.import_module(config['data_provider'])
+    return configs
 
-    func = task.make_network(config)
-    reload(config)
-    return func, config
+import re
+
+re_digits = re.compile(r'(\d+)')
+
+
+def embedded_numbers(s):
+    pieces = re_digits.split(s)  # 切成数字和非数字
+    pieces[1::2] = map(int, pieces[1::2])  # 将数字部分转成整数
+    return pieces
+
+
+def sort_string(lst):
+    return sorted(lst, key=embedded_numbers)
 
 
 def test():
-    trainPath = r'/home/dwxt/project/dcm/train'
-    run_func, config = init()
+    trainPath = r'/home/dwxt/project/dcm/test'
+    config = init()
+    config['inference']['net'].cuda().eval()
     input_res = config['train']['input_res']
     output_res = config['train']['output_res']
     nstack = config['inference']['nstack']
-    transforms = Compose([Resize((input_res, input_res)), ToTensor()])
+    tans = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize([0.5], [0.5])
+    ])
     print('loading data...')
     tic = time.time()
     info_path = '/test_info.csv'
@@ -134,61 +150,103 @@ def test():
         info_result.to_csv(trainPath + info_path, sep=',', header=True)
     uid = info_result.groupby(['studyUid', 'seriesUid'])
     result_list = []
-
+    print(len(uid))
     study_score = {}
+    study_lang = {}
     study_result = {}
 
     for key, group in uid:
         group_count = group.shape[0]
         if group_count > 5:
             zIndex = int(group_count / 2)
-            frame = info_result.loc[info_result['instanceUid'] == (key[1] + '.' + str(zIndex))]
-            if frame.shape[0] == 0:
-                continue
-            frame_info = [frame['dcmPath'].values[0], frame['instanceUid'].values[0], frame['seriesUid'].values[0],
-                          frame['studyUid'].values[0], ]
-            path = frame_info[0]
-            orig_img = tcUtils.dicom2array(path)
-            input_w, input_h = orig_img.shape
-            inp_img = cv2.resize(orig_img, (input_res, input_res)).astype(np.float32)
-            img = inp_img[np.newaxis, np.newaxis, :, :]
-            img = torch.from_numpy(img).cuda()
+            if group_count % 2 == 0:
+                build(config, info_result, input_res, key, nstack, output_res, study_lang, study_result, study_score,
+                      tans,
+                      zIndex)
+                build(config, info_result, input_res, key, nstack, output_res, study_lang, study_result, study_score,
+                      tans,
+                      zIndex + 1)
+            else:
+                build(config, info_result, input_res, key, nstack, output_res, study_lang, study_result, study_score,
+                      tans,
+                      zIndex)
+                build(config, info_result, input_res, key, nstack, output_res, study_lang, study_result, study_score,
+                      tans,
+                      zIndex + 1)
+                build(config, info_result, input_res, key, nstack, output_res, study_lang, study_result, study_score,
+                      tans,
+                      zIndex + 2)
 
-            out = run_func(key, config, "inference", **{'imgs': img})
-            for o in out:
-                data = {}
-                data['seriesUid'] = frame_info[2]
-                data['instanceUid'] = frame_info[1]
-                annotations = []
-
-                a_point = []
-                conf = 0
-                for oid, oo in enumerate(o):
-                    p_data = {}
-                    if oid % 2 == 0:
-                        p_data['tag'] = {'identification': ref.parts[oid], 'disc': 'v' + str(int(oo[3]))}
-                    else:
-                        p_data['tag'] = {'identification': ref.parts[oid], 'vertebra': 'v' + str(int(oo[3]))}
-                    p_data['coord'] = [int(oo[2] * input_w / output_res), int(oo[1] * input_h / output_res)]
-                    orig_img[p_data['coord'][0], p_data['coord'][1]] = 255
-                    p_data['zIndex'] = zIndex
-                    a_point.append(p_data)
-                    conf += oo[0]
-                a_data = {'point': a_point}
-                annotations.append({"annotator": 70, 'data': a_data})
-                data['annotation'] = annotations
-                result = {"studyUid": frame_info[3], "version": "v0.1", "data": [data]}
-
-                if not study_score.get(frame_info[3]) or study_score.get(frame_info[3]) < conf:
-                    print(frame_info[3], frame_info[1], study_score.get(frame_info[3]), conf)
-                    study_result[frame_info[3]] = result
-                    study_score[frame_info[3]] = conf
-            plt.imshow(orig_img)
-            plt.show()
-
+    print(tic)
     with open('data-{}.json'.format(tic), 'w', encoding='utf-8') as f:
         f.write(json.dumps([d for d in study_result.values()], ensure_ascii=False))
-    print('Done (t={:0.2f}s)'.format(time.time() - tic))
+    print('Done {} (t={:0.2f}s)'.format(len(study_score), time.time() - tic))
+
+
+def build(config, info_result, input_res, key, nstack, output_res, study_lang, study_result, study_score, tans, zIndex):
+    frame = info_result.loc[info_result['instanceUid'] == (key[1] + '.' + str(zIndex))]
+    if frame.shape[0] == 0:
+        paths = info_result.loc[info_result['seriesUid'] == key[1]]['dcmPath'].sort_values().values
+        paths = sort_string(paths)
+        frame = info_result.loc[info_result['dcmPath'] == paths[zIndex - 1]]
+        if frame.shape[0] == 0:
+            instances = info_result.loc[info_result['seriesUid'] == key[1]]['instanceUid'].sort_values().values
+            for instance in instances:
+                if instance[-1] == str(zIndex):
+                    frame = info_result.loc[info_result['instanceUid'] == instance]
+    frame_info = [frame['dcmPath'].values[0], frame['instanceUid'].values[0], frame['seriesUid'].values[0],
+                  frame['studyUid'].values[0], ]
+    path = frame_info[0]
+    orig_img = tcUtils.dicom2array(path)
+    input_w, input_h = orig_img.shape
+    inp_img = cv2.resize(orig_img, (input_res, input_res)).astype(np.float32)
+    img = inp_img[np.newaxis, :, :]
+    img = tans(img)
+    img = img.unsqueeze(0).cuda()
+    out = do_test({'imgs': img}, config)
+    for o in out:
+        data = {}
+        data['seriesUid'] = frame_info[2]
+        data['instanceUid'] = frame_info[1]
+        annotations = []
+
+        a_point = []
+        conf = 0
+        for oid, oo in enumerate(o[nstack - 1]):
+            p_data = {}
+            if oid % 2 == 0:
+                p_data['tag'] = {'identification': ref.parts[oid], 'disc': 'v' + str(int(oo[3]))}
+            else:
+                p_data['tag'] = {'identification': ref.parts[oid], 'vertebra': 'v' + str(int(oo[3]))}
+            p_data['coord'] = [int(oo[2] * input_w / output_res), int(oo[1] * input_h / output_res)]
+            try:
+                orig_img[p_data['coord'][1], p_data['coord'][0]] = 255
+            except:
+                pass
+            p_data['zIndex'] = zIndex
+            a_point.append(p_data)
+            conf += oo[0]
+        a_data = {'point': a_point}
+        annotations.append({"annotator": 70, 'data': a_data})
+        data['annotation'] = annotations
+        result = {"studyUid": frame_info[3], "version": "v0.1", "data": [data]}
+        lang = inp_img.mean()
+        if conf > 9 and (not study_score.get(frame_info[3]) or study_score.get(frame_info[3]) < conf):
+            # and (not study_score.get(frame_info[3]) or study_score.get(frame_info[3]) < conf)
+            # if study_score.get(frame_info[3]) is not None and study_score.get(frame_info[3]) > conf + 1:
+            #     continue
+            print(frame_info[3], frame_info[1], study_score.get(frame_info[3]), conf)
+            study_result[frame_info[3]] = result
+            study_lang[frame_info[3]] = lang
+            study_score[frame_info[3]] = conf
+            plt.imshow(orig_img)
+            plt.title(frame_info[3] + '---' + str(conf))
+            plt.show()
+        else:
+            if not study_score.get(frame_info[3]):
+                study_score[frame_info[3]] = 0
+                study_lang[frame_info[3]] = 0
+            print(frame_info[3], study_score.get(frame_info[3]), conf)
 
 
 def read_info(trainPath):

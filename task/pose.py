@@ -17,7 +17,7 @@ __config__ = {
     'data_provider': 'data.dp',
     'network': 'models.pose_higher_hrnet.get_pose_net',
     'inference': {
-        'nstack': 4,
+        'nstack': 2,
         'inp_dim': 256,
         'oup_dim': 11,
         'num_parts': 11,
@@ -29,21 +29,18 @@ __config__ = {
     },
 
     'train': {
-        'batchsize': 32,
+        'batchsize': 24,
         'input_res': 256,
         'output_res': 64,
         'epoch_num': 300,
         'data_num': 150,
-        'train_iters': 10,
+        'train_iters': 1500,
         'valid_iters': 10,
         'learning_rate': 1e-3,
         'max_num_people': 1,
-        'loss': [
-            ['combined_hm_loss', 10],
-            ['combined_lb_loss', 1]
-        ],
-        'stack_loss': [1, 2, 3, 4],
-        'decay_iters': 5,
+        'loss': [1,1],
+        'stack_loss': [1, 1, 1],
+        'decay_iters': 50,
         'decay_lr': 0.1,
         'num_workers': 2,
         'use_data_loader': True,
@@ -53,29 +50,29 @@ __config__ = {
 }
 
 
-def build_targets(heatmap, labelmap):
+def build_targets(preds):
     # print(gt.shape)
-    size = heatmap.shape
-    targets = np.zeros([size[0], size[1], size[2], 4])
+    nstask = len(preds)
+    size = preds[0].shape
+    targets = np.zeros([size[0], nstask, int(size[1]/2), 4])
 
-    m = size[3]
-    n = size[4]
-    labelmap = labelmap.contiguous().view(labelmap.shape[0], labelmap.shape[1], labelmap.shape[2], -1)
-    for idx, g in enumerate(heatmap):
-        for jdx, gg in enumerate(g):
-            for kdx, ggg in enumerate(gg):
-                a = heatmap[idx, jdx, kdx]
+    m = size[2]
+    n = size[3]
+    for idx in range(nstask):
+        heatmap, labelmap = preds[idx][:,int(size[1]/2):],preds[idx][:,:int(size[1]/2)]
+        for jdx, gg in enumerate(heatmap):
+            for kdx in range(int(size[1]/2)):
+                a = heatmap[jdx, kdx]
                 index = int(a.argmax())
                 x = int(index / n)
                 y = index % n
                 targets[idx, jdx, kdx, 0] = a[x, y]
-                targets[idx, jdx, kdx, 1:3] = [x + labelmap[idx, jdx, kdx, 7], y + labelmap[idx, jdx, kdx, 8]]
-                y_ = labelmap[idx, jdx, kdx, :]
+                targets[idx, jdx, kdx, 1:3] = [x, y]
                 if kdx % 2 == 0:
-                    y_ = labelmap[idx, jdx, kdx, 2:7]
+                    y_ = labelmap[jdx, 2:7, x, y]
                     ind = y_.argmax()
                 else:
-                    y_ = labelmap[idx, jdx, kdx, :2]
+                    y_ = labelmap[jdx, :2, x, y]
                     ind = y_.argmax()
                 targets[idx, jdx, kdx, 3] = ind + 1
 
@@ -94,10 +91,9 @@ def make_network(configs):
     config['lossLayers'] = KeypointLoss(configs['inference']['num_parts'], 2,
                                         configs['inference']['num_class'])
     ## optimizer, experiment setup
-    train_cfg['optimizer'] = torch.optim.Adam(config['net'].parameters(), train_cfg['learning_rate'])
+    train_cfg['optimizer'] = torch.optim.Adam(filter(lambda p: p.requires_grad, config['net'].parameters()), train_cfg['learning_rate'])
     train_cfg['scheduler'] = lr_scheduler.StepLR(train_cfg['optimizer'], step_size=train_cfg['decay_iters'],
-                                                 gamma=train_cfg[
-                                                     'decay_lr'])  # 更新学习率的策略：  每隔step_size个epoch就将学习率降为原来的gamma倍。
+                                                 gamma=train_cfg['decay_lr'])  # 更新学习率的策略：  每隔step_size个epoch就将学习率降为原来的gamma倍。
     exp_path = os.path.join('exp', configs['opt'].exp)
     if configs['opt'].exp == 'pose' and configs['opt'].continue_exp is not None:
         exp_path = os.path.join('exp', configs['opt'].continue_exp)
@@ -126,7 +122,7 @@ def do_train(epoch, config, loader):
         combined_preds = net(inputs[0])
         combined_loss, labels_loss = config['inference']["lossLayers"](combined_preds,
                                                                        **{'heatmaps': inputs[1], 'labels': inputs[2]})
-        num_loss = len(config['train']['loss'])
+        num_loss = config['train']['loss']
 
         # losses = [all_loss[idx].cpu()*i[1] for idx, i in enumerate(config['train']['loss'])]
         heatmap_loss = torch.sum(combined_loss.cpu().mul(torch.Tensor(config['train']['stack_loss'])))
@@ -143,7 +139,8 @@ def do_train(epoch, config, loader):
         logger.flush()
         optimizer = config['train']['optimizer']
         optimizer.zero_grad()
-        loss = heatmap_loss + label_loss
+        loss = num_loss[0] * heatmap_loss + num_loss[1] * label_loss
+        # loss = heatmap_loss
         loss.backward()
         optimizer.step()
         batch_idx += 1
@@ -153,8 +150,9 @@ def do_valid(epoch, config, loader):
     logger = config['inference']['logger']
     net = config['inference']['net']
     run_loss = 0
+    batch_idx = 0
     with torch.no_grad():
-        batch_idx = 0
+
         for inputs in tqdm(loader):
             for i, input in enumerate(inputs):
                 if type(inputs[i]) is list:
@@ -180,11 +178,10 @@ def do_valid(epoch, config, loader):
             logger.flush()
             batch_idx += 1
             run_loss += loss.float().item()
-    return run_loss
+    return run_loss/batch_idx
 
 def do_test(inputs, config):
     net = config['inference']['net']
     combined_preds = net(inputs['imgs'])
-    result = build_targets(combined_preds[:, :, :config['inference']['num_parts']],
-                           combined_preds[:, :, config['inference']['num_parts']:])
+    result = build_targets(combined_preds)
     return result
