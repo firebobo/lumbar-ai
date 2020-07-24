@@ -263,8 +263,12 @@ class PoseHigherResolutionNet(nn.Module):
                                bias=False)
         self.bn2 = nn.BatchNorm2d(64, momentum=BN_MOMENTUM)
         self.relu = nn.ReLU(inplace=True)
-        self.layer1 = self._make_layer(Bottleneck, 64, 4)
-
+        # self.layer1 = self._make_layer(Bottleneck, 64, 4)
+        self.stage1_cfg = cfg['MODEL']['EXTRA']['STAGE1']
+        num_channels = self.stage1_cfg['NUM_CHANNELS'][0]
+        block = blocks_dict[self.stage1_cfg['BLOCK']]
+        num_blocks = self.stage1_cfg['NUM_BLOCKS'][0]
+        self.layer1 = self._make_layer(Bottleneck, 64, num_channels, num_blocks)
         self.stage2_cfg = cfg['MODEL']['EXTRA']['STAGE2']
         num_channels = self.stage2_cfg['NUM_CHANNELS']
         block = blocks_dict[self.stage2_cfg['BLOCK']]
@@ -300,40 +304,94 @@ class PoseHigherResolutionNet(nn.Module):
         self.final_layers = self._make_final_layers(cfg, pre_stage_channels[0])
         self.deconv_layers = self._make_deconv_layers(
             cfg, pre_stage_channels[0])
-        self.label_layers = nn.ModuleList([
-            nn.Sequential(
-                nn.Linear((extra.STEM_INPLANES * extra.STEM_INPLANES) * (2 ** (2 * i)), cfg.MODEL.NUM_TAG),
-                nn.Sigmoid()
-            ) for i in range(extra.DECONV.NUM_DECONVS + 1)])
         self.num_deconvs = extra.DECONV.NUM_DECONVS
         self.deconv_config = cfg.MODEL.EXTRA.DECONV
         self.loss_config = cfg.LOSS
         self.tag_num = cfg.MODEL.NUM_TAG
         self.joint_num = cfg.MODEL.NUM_JOINTS
         self.pretrained_layers = cfg['MODEL']['EXTRA']['PRETRAINED_LAYERS']
+        # Classification Head
+
+
+    def _make_head(self, pre_stage_channels):
+        head_block = Bottleneck
+        head_channels = [32, 64, 128, 256]
+
+        # Increasing the #channels on each resolution
+        # from C, 2C, 4C, 8C to 128, 256, 512, 1024
+        incre_modules = []
+        for i, channels in enumerate(pre_stage_channels):
+            incre_module = self._make_layer(head_block,
+                                            channels,
+                                            head_channels[i],
+                                            1,
+                                            stride=1)
+            incre_modules.append(incre_module)
+        incre_modules = nn.ModuleList(incre_modules)
+
+        # downsampling modules
+        downsamp_modules = []
+        for i in range(len(pre_stage_channels) - 1):
+            in_channels = head_channels[i] * head_block.expansion
+            out_channels = head_channels[i + 1] * head_block.expansion
+
+            downsamp_module = nn.Sequential(
+                nn.Conv2d(in_channels=in_channels,
+                          out_channels=out_channels,
+                          kernel_size=3,
+                          stride=2,
+                          padding=1),
+                nn.BatchNorm2d(out_channels, momentum=BN_MOMENTUM),
+                nn.ReLU(inplace=True)
+            )
+
+            downsamp_modules.append(downsamp_module)
+        downsamp_modules = nn.ModuleList(downsamp_modules)
+
+        final_layer = nn.Sequential(
+            nn.Conv2d(
+                in_channels=head_channels[3] * head_block.expansion,
+                out_channels=2048,
+                kernel_size=1,
+                stride=1,
+                padding=0
+            ),
+            nn.BatchNorm2d(2048, momentum=BN_MOMENTUM),
+            nn.ReLU(inplace=True)
+        )
+
+        return incre_modules, downsamp_modules, final_layer
 
     def _make_final_layers(self, cfg, input_channels):
         extra = cfg.MODEL.EXTRA
 
         final_layers = []
-        output_channels = cfg.MODEL.NUM_JOINTS * 2
-        final_layers.append(nn.Conv2d(
-            in_channels=input_channels,
-            out_channels=output_channels,
-            kernel_size=extra.FINAL_CONV_KERNEL,
-            stride=1,
-            padding=1 if extra.FINAL_CONV_KERNEL == 3 else 0
-        ))
+        output_channels = cfg.MODEL.NUM_JOINTS * 3
+        final_layers.append(nn.Sequential(
+                nn.Conv2d(
+                    in_channels=input_channels,
+                    out_channels=output_channels,
+                    kernel_size=extra.FINAL_CONV_KERNEL,
+                    stride=1,
+                    padding=1 if extra.FINAL_CONV_KERNEL == 3 else 0
+                ),
+                nn.BatchNorm2d(output_channels, momentum=BN_MOMENTUM),
+                nn.Sigmoid()
+            ))
 
         deconv_cfg = extra.DECONV
         for i in range(deconv_cfg.NUM_DECONVS):
             input_channels = deconv_cfg.NUM_CHANNELS[i]
-            final_layers.append(nn.Conv2d(
-                in_channels=input_channels,
-                out_channels=output_channels,
-                kernel_size=extra.FINAL_CONV_KERNEL,
-                stride=1,
-                padding=1 if extra.FINAL_CONV_KERNEL == 3 else 0
+            final_layers.append(nn.Sequential(
+                nn.Conv2d(
+                    in_channels=input_channels,
+                    out_channels=output_channels,
+                    kernel_size=extra.FINAL_CONV_KERNEL,
+                    stride=1,
+                    padding=1 if extra.FINAL_CONV_KERNEL == 3 else 0
+                ),
+                nn.BatchNorm2d(output_channels, momentum=BN_MOMENTUM),
+                nn.Sigmoid()
             ))
 
         return nn.ModuleList(final_layers)
@@ -345,7 +403,7 @@ class PoseHigherResolutionNet(nn.Module):
         deconv_layers = []
         for i in range(deconv_cfg.NUM_DECONVS):
             if deconv_cfg.CAT_OUTPUT[i]:
-                final_output_channels = cfg.MODEL.NUM_JOINTS * 2
+                final_output_channels = cfg.MODEL.NUM_JOINTS * 3
                 input_channels += final_output_channels
             output_channels = deconv_cfg.NUM_CHANNELS[i]
             deconv_kernel, padding, output_padding = \
@@ -421,20 +479,20 @@ class PoseHigherResolutionNet(nn.Module):
 
         return nn.ModuleList(transition_layers)
 
-    def _make_layer(self, block, planes, blocks, stride=1):
+    def _make_layer(self, block, inplanes,  planes, blocks, stride=1):
         downsample = None
-        if stride != 1 or self.inplanes != planes * block.expansion:
+        if stride != 1 or inplanes != planes * block.expansion:
             downsample = nn.Sequential(
-                nn.Conv2d(self.inplanes, planes * block.expansion,
+                nn.Conv2d(inplanes, planes * block.expansion,
                           kernel_size=1, stride=stride, bias=False),
                 nn.BatchNorm2d(planes * block.expansion, momentum=BN_MOMENTUM),
             )
 
         layers = []
-        layers.append(block(self.inplanes, planes, stride, downsample))
-        self.inplanes = planes * block.expansion
+        layers.append(block(inplanes, planes, stride, downsample))
+        inplanes = planes * block.expansion
         for i in range(1, blocks):
-            layers.append(block(self.inplanes, planes))
+            layers.append(block(inplanes, planes))
 
         return nn.Sequential(*layers)
 

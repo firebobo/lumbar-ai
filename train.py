@@ -108,16 +108,20 @@ def train(data_loaders, config, post_epoch=None):
             if config['train']['epoch'] > config['train']['epoch_num']:
                 break
         do_train(config['train']['epoch'], config, data_loaders['train'])
+        # do_train(config['train']['epoch'], config, data_loaders['train_valid'])
         mean_loss = do_valid(config['train']['epoch'], config, data_loaders['valid'])
+        # train_mean_loss = do_valid(config['train']['epoch'], config, data_loaders['valid_train'])
+        train_mean_loss = 0
         config['train']['epoch'] += 1
         config['train']['scheduler'].step()
-        print('valid loss:', save_loss, mean_loss)
-        if mean_loss < save_loss:
-            save_loss = mean_loss
+        print('valid loss:', save_loss, mean_loss,train_mean_loss)
+        if mean_loss+train_mean_loss < save_loss:
+            save_loss = mean_loss+train_mean_loss
             save(config, True)
+            save(config)
         else:
             save(config)
-        do_train(config['train']['epoch'], config, data_loaders['valid'])
+
 
 
 

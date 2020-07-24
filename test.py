@@ -167,15 +167,15 @@ def test():
                       tans,
                       zIndex + 1)
             else:
-                build(config, info_result, input_res, key, nstack, output_res, study_lang, study_result, study_score,
-                      tans,
-                      zIndex)
+                # build(config, info_result, input_res, key, nstack, output_res, study_lang, study_result, study_score,
+                #       tans,
+                #       zIndex)
                 build(config, info_result, input_res, key, nstack, output_res, study_lang, study_result, study_score,
                       tans,
                       zIndex + 1)
-                build(config, info_result, input_res, key, nstack, output_res, study_lang, study_result, study_score,
-                      tans,
-                      zIndex + 2)
+                # build(config, info_result, input_res, key, nstack, output_res, study_lang, study_result, study_score,
+                #       tans,
+                #       zIndex + 2)
 
     print(tic)
     with open('data-{}.json'.format(tic), 'w', encoding='utf-8') as f:
@@ -184,16 +184,27 @@ def test():
 
 
 def build(config, info_result, input_res, key, nstack, output_res, study_lang, study_result, study_score, tans, zIndex):
+    frame_dict = {}
     frame = info_result.loc[info_result['instanceUid'] == (key[1] + '.' + str(zIndex))]
-    if frame.shape[0] == 0:
-        paths = info_result.loc[info_result['seriesUid'] == key[1]]['dcmPath'].sort_values().values
-        paths = sort_string(paths)
-        frame = info_result.loc[info_result['dcmPath'] == paths[zIndex - 1]]
-        if frame.shape[0] == 0:
-            instances = info_result.loc[info_result['seriesUid'] == key[1]]['instanceUid'].sort_values().values
-            for instance in instances:
-                if instance[-1] == str(zIndex):
-                    frame = info_result.loc[info_result['instanceUid'] == instance]
+    if not frame.shape[0] == 0:
+        frame_dict[frame['instanceUid'].values[0]] = frame
+
+    paths = info_result.loc[info_result['seriesUid'] == key[1]]['dcmPath'].sort_values().values
+    paths = sort_string(paths)
+    frame = info_result.loc[info_result['dcmPath'] == paths[zIndex - 1]]
+    if not frame.shape[0] == 0:
+        frame_dict[frame['instanceUid'].values[0]] = frame
+
+    instances = info_result.loc[info_result['seriesUid'] == key[1]]['instanceUid'].sort_values().values
+    for instance in instances:
+        if instance[-1] == str(zIndex):
+            frame = info_result.loc[info_result['instanceUid'] == instance]
+    if not frame.shape[0] == 0:
+        frame_dict[frame['instanceUid'].values[0]] = frame
+    for kid, instanceUid in enumerate(frame_dict):
+        build_one(config, frame_dict[instanceUid], input_res, nstack, study_lang, study_result, study_score, tans, zIndex)
+
+def build_one(config, frame, input_res, nstack, study_lang, study_result, study_score, tans, zIndex):
     frame_info = [frame['dcmPath'].values[0], frame['instanceUid'].values[0], frame['seriesUid'].values[0],
                   frame['studyUid'].values[0], ]
     path = frame_info[0]
@@ -212,15 +223,16 @@ def build(config, info_result, input_res, key, nstack, output_res, study_lang, s
 
         a_point = []
         conf = 0
-        for oid, oo in enumerate(o[nstack - 1]):
+        for oid, oo in enumerate(o[nstack]):
             p_data = {}
             if oid % 2 == 0:
                 p_data['tag'] = {'identification': ref.parts[oid], 'disc': 'v' + str(int(oo[3]))}
             else:
                 p_data['tag'] = {'identification': ref.parts[oid], 'vertebra': 'v' + str(int(oo[3]))}
-            p_data['coord'] = [int(oo[2] * input_w / output_res), int(oo[1] * input_h / output_res)]
+            p_data['coord'] = [int(oo[2] * input_w / input_res), int(oo[1] * input_h / input_res)]
             try:
-                orig_img[p_data['coord'][1], p_data['coord'][0]] = 255
+                orig_img[p_data['coord'][1] - 2:p_data['coord'][1] + 2,
+                p_data['coord'][0] - 2:p_data['coord'][0] + 2] = 255
             except:
                 pass
             p_data['zIndex'] = zIndex
@@ -239,9 +251,9 @@ def build(config, info_result, input_res, key, nstack, output_res, study_lang, s
             study_result[frame_info[3]] = result
             study_lang[frame_info[3]] = lang
             study_score[frame_info[3]] = conf
-            plt.imshow(orig_img)
-            plt.title(frame_info[3] + '---' + str(conf))
-            plt.show()
+            # plt.imshow(orig_img)
+            # plt.title(frame_info[3] + '---' + str(conf))
+            # plt.show()
         else:
             if not study_score.get(frame_info[3]):
                 study_score[frame_info[3]] = 0

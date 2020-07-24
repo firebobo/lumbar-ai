@@ -1,3 +1,5 @@
+import random
+
 import numpy as np
 import os 
 import time
@@ -24,19 +26,24 @@ class Lumbar:
         self.data_dir = data_dir
         self.annot_path = annot_path
         self.info_path = info_path
+        self.file_info_name = '/file_info.csv'
 
         print('loading data...')
         tic = time.time()
         try:
             result = pd.read_csv(self.data_dir + self.info_path)
+            file_info = pd.read_csv(self.data_dir + self.file_info_name)
+
             # result.annotation.apply(self.jsonLoads)
             self.info = result
+            self.file_info = file_info
         except:
-            result = self.read_info()
+            result,path_info = self.read_info()
             result.to_csv(self.data_dir + self.info_path,sep=',',header=True)
+            path_info.to_csv(self.data_dir + self.file_info_name,sep=',',header=True)
 
             self.info = result
-
+            self.file_info = path_info
 
 
 
@@ -67,17 +74,43 @@ class Lumbar:
             except:
                 continue
         result = pd.merge(annotation_info, dcm_info, on=['studyUid', 'seriesUid', 'instanceUid'])
-        return result
+        return result,dcm_info
 
     def getAnnots(self,idx):
-        row = self.info.rows[idx]
+        row = self.get_row(idx)
         points = row['annotation']
         if type(points) is str:
             points = self.jsonLoads(points)
-        kps = []
+        lbs = {}
         for p in points:
-            kps.append(p['coord'])
-        return row['annotation']
+            # print(p)
+            disc = None
+            if p['tag'].get('vertebra'):
+                disc = p['tag'].get('vertebra')
+            else:
+                disc = p['tag'].get('disc')
+            lbs[p['tag']['identification']] = disc
+        labels = np.zeros((len(parts), 7))
+        for idx, part in enumerate(parts):
+            if lbs.get(part):
+                if "-" in part:
+                    for par in lbs[part].split(','):
+                        labels[idx, pair_labels[1][par] - 1] = 1
+                else:
+                    labels[idx, pair_labels[0][lbs[part]] - 1] = 1
+        if type(points) is str:
+            points = self.jsonLoads(points)
+        kps = {}
+        for p in points:
+            kps[p['tag']['identification']] = p['coord']
+        key_points = np.zeros((len(parts),2))
+        for idx,part in enumerate(parts):
+            if kps.get(part):
+                key_points[idx] = kps[part]
+
+        img = tcUtils.dicom2array(row['dcmPath'])
+
+        return img,key_points,labels
 
     def getLength(self):
         return len(self.t_center), len(self.v_center)
@@ -86,11 +119,26 @@ class Lumbar:
         return tcUtils.dicom2array(self.get_path(idx))
 
     def get_path(self,idx):
-        row = self.info.loc[idx]
+        row = self.get_row(idx)
         return row['dcmPath']
 
-    def get_kps(self,idx):
+    def get_row(self, idx):
         row = self.info.loc[idx]
+        instanceUid = row['instanceUid']
+        split = instanceUid.split('.')
+        str_id = int(split[-1]) + random.randint(-2, 2)
+        split[-1] = str(str_id)
+        temp = '.'.join(split)
+        temp_row = self.file_info.loc[self.file_info['instanceUid']==temp]
+        if temp_row.empty:
+            return row
+        if not temp_row.get('annotation'):
+            row = row.copy()
+            row['dcmPath'] = temp_row['dcmPath'].values[0]
+        return row
+
+    def get_kps(self,idx):
+        row = self.get_row(idx)
         points = row['annotation']
         if type(points) is str:
             points = self.jsonLoads(points)
@@ -105,7 +153,7 @@ class Lumbar:
         return key_points
 
     def get_labels(self,idx):
-        row = self.info.loc[idx]
+        row = self.get_row(idx)
         points = row['annotation']
         if type(points) is str:
             points = self.jsonLoads(points)
@@ -114,7 +162,7 @@ class Lumbar:
             # print(p)
             disc = None
             if p['tag'].get('vertebra'):
-                disc =  p['tag'].get('vertebra')
+                disc = p['tag'].get('vertebra')
             else:
                 disc = p['tag'].get('disc')
             lbs[p['tag']['identification']] = disc
