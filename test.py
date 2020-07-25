@@ -226,10 +226,16 @@ def build_one(config, frame, input_res, nstack, study_lang, study_result, study_
         for oid, oo in enumerate(o[nstack]):
             p_data = {}
             if oid % 2 == 0:
-                p_data['tag'] = {'identification': ref.parts[oid], 'disc': 'v' + str(int(oo[3]))}
+                la = []
+                n=int(oo[3])
+                while n > 0:
+                    la.append('v'+str(n % 10))
+                    n = int(n / 10)
+
+                p_data['tag'] = {'identification': ref.parts[oid], 'disc': ','.join(la)}
             else:
                 p_data['tag'] = {'identification': ref.parts[oid], 'vertebra': 'v' + str(int(oo[3]))}
-            p_data['coord'] = [int(oo[2] * input_w / input_res), int(oo[1] * input_h / input_res)]
+            p_data['coord'] = [int(oo[2] * input_h / input_res), int(oo[1] * input_w / input_res)]
             try:
                 orig_img[p_data['coord'][1] - 2:p_data['coord'][1] + 2,
                 p_data['coord'][0] - 2:p_data['coord'][0] + 2] = 255

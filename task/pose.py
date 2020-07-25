@@ -40,7 +40,7 @@ __config__ = {
         'valid_train_iters': 8,
         'learning_rate': 1e-3,
         'max_num_people': 1,
-        'loss': [1,1,100],
+        'loss': [1, 1, 100],
         'stack_loss': [1, 1, 1],
         'decay_iters': 10,
         'decay_lr': 0.5,
@@ -59,17 +59,19 @@ def build_targets(combined_preds):
     key_num = int(size[1] / 3)
     targets = np.zeros([size[0], nstask, key_num, 4])
     for idx in range(nstask):
-        heatmap,label_preds, maskmap = combined_preds[idx][:, key_num:2 * key_num].cpu(),combined_preds[idx][:, :key_num].cpu(), combined_preds[idx][:, 2 * key_num:].cpu()
+        heatmap, label_preds, maskmap = combined_preds[idx][:, key_num:2 * key_num].cpu(), combined_preds[idx][:,
+                                                                                           :key_num].cpu(), \
+                                        combined_preds[idx][:, 2 * key_num:].cpu()
         for jdx, gg in enumerate(heatmap):
             for kdx in range(key_num):
                 a = heatmap[jdx, kdx]
                 siz = a.shape
                 m = siz[0]
                 n = siz[1]
-                mask = torch.zeros([m,n])
-                mask[maskmap[jdx, kdx]>0.5]=1
+                mask = torch.zeros([m, n])
+                mask[maskmap[jdx, kdx] > 0.5] = 1
 
-                a = a*mask
+                a = a * mask
                 index = int(a.argmax())
                 x = int(index / n)
                 y = index % n
@@ -79,12 +81,20 @@ def build_targets(combined_preds):
                 targets[jdx, idx, kdx, 0] = a[x, y]
                 targets[jdx, idx, kdx, 1:3] = [x, y]
                 if kdx % 2 == 0:
-                    y_ = label_preds[jdx, 2:7,x,y]
-                    ind = y_.argmax()
+                    y_ = label_preds[jdx, 2:7, x, y]
+
+                    if y_.max() < 0.5:
+                        ind = y_.argmax() + 1
+                    else:
+                        ind = 0
+                        for inx, la in enumerate(y_):
+                            if la > 0.5:
+                                ind = ind * 10 + inx+1
+
                 else:
-                    y_ = label_preds[jdx, :2,x,y]
-                    ind = y_.argmax()
-                targets[jdx, idx, kdx, 3] = ind + 1
+                    y_ = label_preds[jdx, :2, x, y]
+                    ind = y_.argmax() + 1
+                targets[jdx, idx, kdx, 3] = ind
 
     return targets  ## l of dim bsize
 
@@ -95,7 +105,7 @@ def make_network(configs):
 
     ## creating new posenet
     PoseNet = importNet(configs['network'])
-    poseNet = PoseNet(configs["cfg"],True)
+    poseNet = PoseNet(configs["cfg"], True)
     forward_net = DataParallel(poseNet.cuda())
     config['net'] = forward_net
     config['lossLayers'] = KeypointLoss(configs['inference']['num_parts'], 2,
@@ -103,7 +113,8 @@ def make_network(configs):
     ## optimizer, experiment setup
     train_cfg['optimizer'] = torch.optim.AdamW(config['net'].parameters(), train_cfg['learning_rate'])
     train_cfg['scheduler'] = lr_scheduler.StepLR(train_cfg['optimizer'], step_size=train_cfg['decay_iters'],
-                                                 gamma=train_cfg['decay_lr'])  # 更新学习率的策略：  每隔step_size个epoch就将学习率降为原来的gamma倍。
+                                                 gamma=train_cfg[
+                                                     'decay_lr'])  # 更新学习率的策略：  每隔step_size个epoch就将学习率降为原来的gamma倍。
     exp_path = os.path.join('exp', configs['opt'].exp)
     if configs['opt'].exp == 'pose' and configs['opt'].continue_exp is not None:
         exp_path = os.path.join('exp', configs['opt'].continue_exp)
@@ -141,13 +152,13 @@ def do_train(epoch, config, loader):
         label_loss = torch.sum(labels_loss.cpu().mul(torch.Tensor(config['train']['stack_loss'])))
         mask_loss = torch.sum(masks_loss.cpu().mul(torch.Tensor(config['train']['stack_loss'])))
 
-        loss = num_loss[0] * heatmap_loss + num_loss[1] * label_loss + num_loss[2]*mask_loss
+        loss = num_loss[0] * heatmap_loss + num_loss[1] * label_loss + num_loss[2] * mask_loss
         if batch_idx % 100 == 0:
             toprint += ' \n{}'.format(str(combined_loss.cpu()))
             toprint += ' \n{}'.format(str(labels_loss.cpu()))
             toprint += ' \n{}'.format(str(masks_loss.cpu()))
         else:
-            toprint += ' {},{},{},{}'.format(heatmap_loss, label_loss, mask_loss,loss)
+            toprint += ' {},{},{},{}'.format(heatmap_loss, label_loss, mask_loss, loss)
         logger.write(toprint)
         logger.flush()
         optimizer = config['train']['optimizer']
@@ -175,10 +186,11 @@ def do_valid(epoch, config, loader):
                     inputs[i] = make_input(inputs[i])
 
             combined_preds = net(inputs[0])
-            combined_loss, labels_loss,masks_loss = config['inference']["lossLayers"](combined_preds, **{'heatmaps': inputs[1],
-                                                                                              'labels': inputs[2],
-                                                                                              'masks': inputs[3]})
-            loss = labels_loss[:, -1].sum() + combined_loss[:, -1].sum()+masks_loss[:, -1].sum()
+            combined_loss, labels_loss, masks_loss = config['inference']["lossLayers"](combined_preds,
+                                                                                       **{'heatmaps': inputs[1],
+                                                                                          'labels': inputs[2],
+                                                                                          'masks': inputs[3]})
+            loss = labels_loss[:, -1].sum() + combined_loss[:, -1].sum() + masks_loss[:, -1].sum()
 
             toprint = '\n{} {}: '.format(epoch, batch_idx)
             heatmap_loss = torch.sum(combined_loss.cpu().mul(torch.Tensor(config['train']['stack_loss'])))
@@ -194,7 +206,8 @@ def do_valid(epoch, config, loader):
             logger.flush()
             batch_idx += 1
             run_loss += loss.float().item()
-    return run_loss/batch_idx
+    return run_loss / batch_idx
+
 
 def do_test(inputs, config):
     net = config['inference']['net']
