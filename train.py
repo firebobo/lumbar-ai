@@ -98,7 +98,7 @@ def save(config, is_best=False):
 
 
 def train(data_loaders, config, post_epoch=None):
-    save_loss = 1e10
+    save_correct = 0
     net = config['inference']['net']
     config['inference']['net'] = net.train()
     while True:
@@ -109,14 +109,14 @@ def train(data_loaders, config, post_epoch=None):
                 break
         do_train(config['train']['epoch'], config, data_loaders['train'])
         # do_train(config['train']['epoch'], config, data_loaders['train_valid'])
-        mean_loss = do_valid(config['train']['epoch'], config, data_loaders['valid'])
+        mean_correct = do_valid(config['train']['epoch'], config, data_loaders['valid'])
         # train_mean_loss = do_valid(config['train']['epoch'], config, data_loaders['valid_train'])
         train_mean_loss = 0
         config['train']['epoch'] += 1
         config['train']['scheduler'].step()
-        print('valid loss:', save_loss, mean_loss,train_mean_loss)
-        if mean_loss+train_mean_loss < save_loss:
-            save_loss = mean_loss+train_mean_loss
+        print('valid loss:', save_correct, mean_correct)
+        if mean_correct > save_correct:
+            save_correct = mean_correct
             save(config, True)
             save(config)
         else:
