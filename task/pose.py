@@ -40,7 +40,7 @@ __config__ = {
         'valid_train_iters': 8,
         'learning_rate': 1e-3,
         'max_num_people': 1,
-        'loss': [1, 1, 100],
+        'loss': [1, 0.1, 100],
         'stack_loss': [1, 1, 1],
         'decay_iters': 10,
         'decay_lr': 0.5,
@@ -154,9 +154,11 @@ def do_train(epoch, config, loader):
 
         loss = num_loss[0] * heatmap_loss + num_loss[1] * label_loss + num_loss[2] * mask_loss
         if batch_idx % 100 == 0:
+            toprint += ' {},{},{},{}'.format(heatmap_loss, label_loss, mask_loss, loss)
             toprint += ' \n{}'.format(str(combined_loss.cpu()))
             toprint += ' \n{}'.format(str(labels_loss.cpu()))
             toprint += ' \n{}'.format(str(masks_loss.cpu()))
+
         else:
             toprint += ' {},{},{},{}'.format(heatmap_loss, label_loss, mask_loss, loss)
         logger.write(toprint)
@@ -170,10 +172,11 @@ def do_train(epoch, config, loader):
         batch_idx += 1
 
 
-def build_targets_compute(combined_preds, class_preds, heatmap, label):
+def build_targets_compute(combined_preds, heatmap, label):
     size = combined_preds[0].shape
     key_num = int(size[1] / 3)
     n_correct = 0
+    xy_correct = 0
     all_correct = 0
     heatmap_preds, label_preds, mask_preds = combined_preds[-1][:, key_num:2 * key_num].cpu(), combined_preds[-1][:,
                                                                                                :key_num].cpu(), \
@@ -197,8 +200,11 @@ def build_targets_compute(combined_preds, class_preds, heatmap, label):
             index = int(aa.argmax())
             x = int(index / n)
             y = index % n
-            y_ = label_preds[jdx, kdx, 2:7, x_pred, y_pred]
+            y_ = label_preds[jdx, 2:7, x_pred, y_pred]
             if (x_pred - x) ** 2 + (y - y_pred) ** 2 <= 9:
+                xy_correct += 1
+                # all_correct += 1
+
                 if kdx % 2 == 0:
                     for inx, la in enumerate(label[jdx, kdx, 2:7]):
                         if la == 1:
@@ -209,6 +215,8 @@ def build_targets_compute(combined_preds, class_preds, heatmap, label):
                         ind = y_.argmax()
                         if label[jdx, kdx, 2 + ind] == 1:
                             n_correct += 1
+
+
                 else:
                     ind = y_.argmax()
 
@@ -216,7 +224,7 @@ def build_targets_compute(combined_preds, class_preds, heatmap, label):
                         n_correct += 1
             else:
                 all_correct += 1
-    return n_correct / all_correct
+    return n_correct / all_correct, xy_correct / all_correct
 
 
 def do_valid(epoch, config, loader):
@@ -235,7 +243,7 @@ def do_valid(epoch, config, loader):
                     inputs[i] = make_input(inputs[i])
 
             combined_preds = net(inputs[0])
-            correct = build_targets_compute(combined_preds, inputs[1][-1], inputs[2])
+            n_correct, xy_correct = build_targets_compute(combined_preds, inputs[1][-1], inputs[2])
 
             combined_loss, labels_loss, masks_loss = config['inference']["lossLayers"](combined_preds,
                                                                                        **{'heatmaps': inputs[1],
@@ -248,16 +256,16 @@ def do_valid(epoch, config, loader):
             num_loss = config['train']['loss']
             loss = num_loss[0] * heatmap_loss + num_loss[1] * label_loss + num_loss[2] * mask_loss
             if batch_idx % 100 == 0:
-                toprint += ' {},{},{},{},{}'.format(heatmap_loss, label_loss, mask_loss, loss, correct)
+                toprint += ' {},{},{},{},{},{}'.format(heatmap_loss, label_loss, mask_loss, loss, n_correct,xy_correct)
                 toprint += ' \n{}'.format(str(combined_loss.cpu()))
                 toprint += ' \n{}'.format(str(labels_loss.cpu()))
                 toprint += ' \n{}'.format(str(masks_loss.cpu()))
             else:
-                toprint += ' {},{},{},{},{}'.format(heatmap_loss, label_loss, mask_loss, loss, correct)
+                toprint += ' {},{},{},{},{},{}'.format(heatmap_loss, label_loss, mask_loss, loss,  n_correct,xy_correct)
             logger.write(toprint)
             logger.flush()
             batch_idx += 1
-            run_correct += correct
+            run_correct += n_correct
     return run_correct / batch_idx
 
 
