@@ -126,7 +126,7 @@ class Lumbar:
         row = self.info.loc[idx]
         instanceUid = row['instanceUid']
         split = instanceUid.split('.')
-        str_id = int(split[-1]) + random.randint(-2, 2)
+        str_id = int(split[-1]) + random.randint(-1, 1)
         split[-1] = str(str_id)
         temp = '.'.join(split)
         temp_row = self.file_info.loc[self.file_info['instanceUid']==temp]

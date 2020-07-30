@@ -366,7 +366,7 @@ class PoseHigherResolutionNet(nn.Module):
         extra = cfg.MODEL.EXTRA
 
         final_layers = []
-        output_channels = cfg.MODEL.NUM_JOINTS * 3
+        output_channels = cfg.MODEL.NUM_JOINTS * 9
         final_layers.append(nn.Sequential(
                 nn.Conv2d(
                     in_channels=input_channels,
@@ -376,7 +376,7 @@ class PoseHigherResolutionNet(nn.Module):
                     padding=1 if extra.FINAL_CONV_KERNEL == 3 else 0
                 ),
                 nn.BatchNorm2d(output_channels, momentum=BN_MOMENTUM),
-                nn.Sigmoid()
+                nn.ReLU()
             ))
 
         deconv_cfg = extra.DECONV
@@ -391,7 +391,8 @@ class PoseHigherResolutionNet(nn.Module):
                     padding=1 if extra.FINAL_CONV_KERNEL == 3 else 0
                 ),
                 nn.BatchNorm2d(output_channels, momentum=BN_MOMENTUM),
-                nn.Sigmoid()
+                # nn.Sigmoid()
+                nn.ReLU()
             ))
 
         return nn.ModuleList(final_layers)
@@ -403,7 +404,7 @@ class PoseHigherResolutionNet(nn.Module):
         deconv_layers = []
         for i in range(deconv_cfg.NUM_DECONVS):
             if deconv_cfg.CAT_OUTPUT[i]:
-                final_output_channels = cfg.MODEL.NUM_JOINTS * 3
+                final_output_channels = cfg.MODEL.NUM_JOINTS * 9
                 input_channels += final_output_channels
             output_channels = deconv_cfg.NUM_CHANNELS[i]
             deconv_kernel, padding, output_padding = \
