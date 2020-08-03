@@ -107,7 +107,7 @@ def train(data_loaders, config, post_epoch=None):
         if 'epoch_num' in config['train']:
             if config['train']['epoch'] > config['train']['epoch_num']:
                 break
-        do_train(config['train']['epoch'], config, data_loaders['train_valid'])
+        # do_train(config['train']['epoch'], config, data_loaders['train_valid'])
         do_train(config['train']['epoch'], config, data_loaders['train'])
 
         mean_correct = do_valid(config['train']['epoch'], config, data_loaders['valid'])

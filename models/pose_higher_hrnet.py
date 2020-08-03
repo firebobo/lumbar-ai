@@ -19,6 +19,8 @@ import logging
 import torch
 import torch.nn as nn
 
+from models.layers import Hourglass
+
 BN_MOMENTUM = 0.1
 logger = logging.getLogger(__name__)
 
@@ -241,6 +243,66 @@ class HighResolutionModule(nn.Module):
 
         return x_fuse
 
+class Bottleneck(nn.Module):
+    expansion = 4
+
+    def __init__(self, inplanes, planes, stride=1, downsample=None, num_group=32):
+        super(Bottleneck, self).__init__()
+        self.conv1 = nn.Conv2d(inplanes, planes*2, kernel_size=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(planes*2)
+        self.conv2 = nn.Conv2d(planes*2, planes*2, kernel_size=3, stride=stride,
+                               padding=1, bias=False, groups=num_group)
+        self.bn2 = nn.BatchNorm2d(planes*2)
+        self.conv3 = nn.Conv2d(planes*2, planes * 4, kernel_size=1, bias=False)
+        self.bn3 = nn.BatchNorm2d(planes * 4)
+        self.relu = nn.ReLU(inplace=True)
+        self.downsample = downsample
+        self.stride = stride
+
+        if planes == 64:
+            self.globalAvgPool = nn.AvgPool2d(56, stride=1)
+        elif planes == 128:
+            self.globalAvgPool = nn.AvgPool2d(28, stride=1)
+        elif planes == 256:
+            self.globalAvgPool = nn.AvgPool2d(14, stride=1)
+        elif planes == 512:
+            self.globalAvgPool = nn.AvgPool2d(7, stride=1)
+        self.fc1 = nn.Linear(in_features=planes * 4, out_features=round(planes / 4))
+        self.fc2 = nn.Linear(in_features=round(planes / 4), out_features=planes * 4)
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+        residual = x
+
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+
+        out = self.conv2(out)
+        out = self.bn2(out)
+        out = self.relu(out)
+
+        out = self.conv3(out)
+        out = self.bn3(out)
+
+        if self.downsample is not None:
+            residual = self.downsample(x)
+
+        original_out = out
+        out = self.globalAvgPool(out)
+        out = out.view(out.size(0), -1)
+        out = self.fc1(out)
+        out = self.relu(out)
+        out = self.fc2(out)
+        out = self.sigmoid(out)
+        out = out.view(out.size(0), out.size(1), 1, 1)
+        out = out * original_out
+
+        out += residual
+        out = self.relu(out)
+
+        return out
+
 
 blocks_dict = {
     'BASIC': BasicBlock,
@@ -301,7 +363,7 @@ class PoseHigherResolutionNet(nn.Module):
         self.stage4, pre_stage_channels = self._make_stage(
             self.stage4_cfg, num_channels, multi_scale_output=False)
 
-        self.final_layers = self._make_final_layers(cfg, pre_stage_channels[0])
+        self.final_layers, self.final_label_layers = self._make_final_layers(cfg, pre_stage_channels[0])
         self.deconv_layers = self._make_deconv_layers(
             cfg, pre_stage_channels[0])
         self.num_deconvs = extra.DECONV.NUM_DECONVS
@@ -366,7 +428,8 @@ class PoseHigherResolutionNet(nn.Module):
         extra = cfg.MODEL.EXTRA
 
         final_layers = []
-        output_channels = cfg.MODEL.NUM_JOINTS * 9
+        final_label_layers = []
+        output_channels = 2*cfg.MODEL.NUM_JOINTS
         final_layers.append(nn.Sequential(
                 nn.Conv2d(
                     in_channels=input_channels,
@@ -376,7 +439,19 @@ class PoseHigherResolutionNet(nn.Module):
                     padding=1 if extra.FINAL_CONV_KERNEL == 3 else 0
                 ),
                 nn.BatchNorm2d(output_channels, momentum=BN_MOMENTUM),
-                nn.ReLU()
+                # nn.Sigmoid()
+            ))
+        final_label_layers.append(nn.Sequential(
+                Hourglass(4, input_channels, True, 0),
+                nn.Conv2d(
+                    in_channels=input_channels,
+                    out_channels=cfg.MODEL.NUM_TAG,
+                    kernel_size=extra.FINAL_CONV_KERNEL,
+                    stride=1,
+                    padding=1 if extra.FINAL_CONV_KERNEL == 3 else 0
+                ),
+                nn.BatchNorm2d(cfg.MODEL.NUM_TAG, momentum=BN_MOMENTUM),
+                # nn.Sigmoid()
             ))
 
         deconv_cfg = extra.DECONV
@@ -392,10 +467,22 @@ class PoseHigherResolutionNet(nn.Module):
                 ),
                 nn.BatchNorm2d(output_channels, momentum=BN_MOMENTUM),
                 # nn.Sigmoid()
-                nn.ReLU()
+            ))
+            final_label_layers.append(nn.Sequential(
+                Hourglass(4, input_channels, True, 0),
+                nn.Conv2d(
+                    in_channels=input_channels,
+                    out_channels=cfg.MODEL.NUM_TAG,
+                    kernel_size=extra.FINAL_CONV_KERNEL,
+                    stride=1,
+                    padding=1 if extra.FINAL_CONV_KERNEL == 3 else 0
+                ),
+                nn.BatchNorm2d(cfg.MODEL.NUM_TAG, momentum=BN_MOMENTUM),
+                # nn.Sigmoid()
             ))
 
-        return nn.ModuleList(final_layers)
+        return nn.ModuleList(final_layers), nn.ModuleList(final_label_layers)
+
 
     def _make_deconv_layers(self, cfg, input_channels):
         extra = cfg.MODEL.EXTRA
@@ -404,7 +491,7 @@ class PoseHigherResolutionNet(nn.Module):
         deconv_layers = []
         for i in range(deconv_cfg.NUM_DECONVS):
             if deconv_cfg.CAT_OUTPUT[i]:
-                final_output_channels = cfg.MODEL.NUM_JOINTS * 9
+                final_output_channels = 2*cfg.MODEL.NUM_JOINTS+cfg.MODEL.NUM_TAG
                 input_channels += final_output_channels
             output_channels = deconv_cfg.NUM_CHANNELS[i]
             deconv_kernel, padding, output_padding = \
@@ -421,13 +508,15 @@ class PoseHigherResolutionNet(nn.Module):
                     output_padding=output_padding,
                     bias=False),
                 nn.BatchNorm2d(output_channels, momentum=BN_MOMENTUM),
-                nn.ReLU(inplace=True)
+                nn.ReLU(inplace=True),
             ))
             for _ in range(cfg.MODEL.EXTRA.DECONV.NUM_BASIC_BLOCKS):
                 layers.append(nn.Sequential(
                     BasicBlock(output_channels, output_channels),
                 ))
+
             deconv_layers.append(nn.Sequential(*layers))
+
             input_channels = output_channels
 
         return nn.ModuleList(deconv_layers)
@@ -563,18 +652,19 @@ class PoseHigherResolutionNet(nn.Module):
         y_list = self.stage4(x_list)
 
         final_outputs = []
-        label_outputs = []
         x = y_list[0]
         y = self.final_layers[0](x)
-        final_outputs.append(y)
+        label_y = self.final_label_layers[0](x)
+        final_outputs.append(torch.cat((y, label_y), 1))
 
         for i in range(self.num_deconvs):
             if self.deconv_config.CAT_OUTPUT[i]:
-                x = torch.cat((x, y), 1)
+                x = torch.cat((x, y, label_y), 1)
 
             x = self.deconv_layers[i](x)
             y = self.final_layers[i + 1](x)
-            final_outputs.append(y)
+            label_y = self.final_label_layers[i + 1](x)
+            final_outputs.append(torch.cat((y, label_y), 1))
 
         return final_outputs
 

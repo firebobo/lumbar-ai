@@ -103,7 +103,10 @@ class Dataset(torch.utils.data.Dataset):
             inp = random_brightness(inp, 32)
             inp = random_contrast(inp, 1, 1.5)
             inp = random_brightness(inp, 32)
-            inp = inp.clip(0, 255)
+
+            noise = np.random.normal(0, 20, inp.shape)
+            inp = inp+noise
+            inp = inp.clip(0, 255).astype(np.float32)
             ## generate heatmaps on outres
             # inp = inp.astype(np.int).astype(np.float32)
 
@@ -173,7 +176,7 @@ class Dataset(torch.utils.data.Dataset):
 
     def geometric_changes(self,image,kpt_change_pre,width,height):
         pts1 = np.float32([[50, 50], [200, 50], [50, 200]])
-        rand = np.random.randint(-20,20,size=(3,2))
+        rand = np.random.randint(-30,30,size=(3,2))
         pts2 = pts1+rand
         M = cv2.getAffineTransform(pts1, pts2.astype(np.float32))
         image_0 = cv2.warpAffine(image, M, (width, height))

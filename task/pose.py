@@ -32,7 +32,7 @@ __config__ = {
         'batchsize': 16,
         'input_res': 256,
         'output_res': 64,
-        'epoch_num': 13,
+        'epoch_num': 14,
         'data_num': 150,
         'train_iters': 500,
         'train_valid_iters': 170,
@@ -40,7 +40,7 @@ __config__ = {
         'valid_train_iters': 8,
         'learning_rate': 1e-3,
         'max_num_people': 1,
-        'loss': [1, 0.1, 0.005],
+        'loss': [1, 5, 0.01],
         'stack_loss': [1, 1, 1],
         'decay_iters': 10,
         'decay_lr': 0.5,
@@ -63,9 +63,9 @@ def build_targets(combined_preds):
                                         nn.Sigmoid()(combined_preds[idx][:, 2 * key_num:].cpu())
         size = heatmap_preds.shape
         mask = torch.zeros(size)
-        mask[mask_preds > 0.5] = 1
+        mask[mask_preds > 0.7] = 1
         n = size[3]
-        heatmap_preds = nn.AvgPool2d(kernel_size=3, stride=1, padding=1)(heatmap_preds * mask)
+        heatmap_preds = heatmap_preds * mask
         for jdx, gg in enumerate(heatmap_preds):
             for kdx in range(key_num):
                 a = heatmap_preds[jdx, kdx]
@@ -82,7 +82,7 @@ def build_targets(combined_preds):
                 targets[jdx, idx, kdx, 0] = a[x_pred, y_pred]
                 targets[jdx, idx, kdx, 1:3] = [x_pred, y_pred]
                 if kdx % 2 == 0:
-                    y_ = label_preds[jdx, kdx * 7 + 2:kdx * 7 + 7, x_pred, y_pred]
+                    y_ = label_preds[jdx, 2:7, x_pred, y_pred]
 
                     if y_.max() < 0.5:
                         ind = y_.argmax() + 1
@@ -93,7 +93,7 @@ def build_targets(combined_preds):
                                 ind = ind * 10 + inx + 1
 
                 else:
-                    y_ = label_preds[jdx, kdx * 7:kdx * 7 + 2, x_pred, y_pred]
+                    y_ = label_preds[jdx, :2, x_pred, y_pred]
                     ind = y_.argmax() + 1
                 targets[jdx, idx, kdx, 3] = ind
 
@@ -180,12 +180,12 @@ def build_targets_compute(combined_preds, heatmap, label):
     xy_correct = 0
     all_correct = 0
     idx = -1
-    heatmap_preds, mask_preds, label_preds = combined_preds[idx][:, :key_num].cpu(), combined_preds[idx][:, key_num:2 * key_num].cpu(), combined_preds[idx][:, 2 * key_num:].cpu()
+    heatmap_preds, mask_preds, label_preds = combined_preds[idx][:, :key_num].cpu(), nn.Sigmoid()(combined_preds[idx][:, key_num:2 * key_num].cpu()), nn.Sigmoid()(combined_preds[idx][:, 2 * key_num:].cpu())
     size = heatmap_preds.shape
     mask = torch.zeros(size)
     mask[mask_preds > 0.5] = 1
     n = size[3]
-    heatmap_preds = nn.AvgPool2d(kernel_size=3, stride=1, padding=1)(heatmap_preds * mask)
+    heatmap_preds = heatmap_preds * mask
     for jdx, gg in enumerate(heatmap_preds):
         for kdx in range(key_num):
             a = heatmap_preds[jdx, kdx]
@@ -201,7 +201,7 @@ def build_targets_compute(combined_preds, heatmap, label):
             x = int(index / n)
             y = index % n
             if kdx % 2 == 0:
-                y_ = label_preds[jdx, kdx * 7 + 2:kdx * 7 + 7, x_pred, y_pred]
+                y_ = label_preds[jdx, 2:7, x_pred, y_pred]
                 for inx, la in enumerate(label[jdx, kdx, 2:7]):
                     if la == 1:
                         if (x_pred - x) ** 2 + (y - y_pred) ** 2 <= 9:
@@ -217,7 +217,7 @@ def build_targets_compute(combined_preds, heatmap, label):
 
 
             else:
-                y_ = label_preds[jdx, kdx * 7:kdx * 7 + 2, x_pred, y_pred]
+                y_ = label_preds[jdx, :2, x_pred, y_pred]
                 ind = y_.argmax()
                 all_correct += 1
                 if (x_pred - x) ** 2 + (y - y_pred) ** 2 <= 9:

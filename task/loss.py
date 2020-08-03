@@ -1,4 +1,27 @@
 import torch
+import torch.nn as nn
+
+
+class LabelSmoothing(nn.Module):
+    """
+    NLL loss with label smoothing.
+    """
+    def __init__(self, smoothing=0.0):
+        """
+        Constructor for the LabelSmoothing module.
+        :param smoothing: label smoothing factor
+        """
+        super(LabelSmoothing, self).__init__()
+        self.confidence = 1.0 - smoothing
+        self.smoothing = smoothing
+
+    def forward(self, x, target):
+
+        true_dist = target.data.clone()#先深复制过来
+        K = target.shape[-1]  # number of channels
+        true_dist = ((1 - self.smoothing) * true_dist) + (self.smoothing / K)
+        loss = torch.nn.BCEWithLogitsLoss(reduction='sum')(x,true_dist)
+        return loss.mean()
 
 
 class HeatmapLoss(torch.nn.Module):
@@ -26,12 +49,13 @@ class HeatmapLoss(torch.nn.Module):
         #     loss[idx] = l.mean()
         # return loss  ## l of dim bsize
 
+
 class LabelLoss(torch.nn.Module):
     """
     loss for detection heatmap
     """
 
-    def __init__(self,key):
+    def __init__(self, key):
         super(LabelLoss, self).__init__()
         self.key = key
 
@@ -42,7 +66,6 @@ class LabelLoss(torch.nn.Module):
 
         m = size[2]
         n = size[3]
-        heatmap = torch.nn.AvgPool2d(kernel_size=3, stride=1, padding=1)(heatmap)
         for idx, g in enumerate(gt):
             l = torch.zeros((gt.shape[1]), dtype=float)
             for jdx, gg in enumerate(g):
@@ -56,7 +79,13 @@ class LabelLoss(torch.nn.Module):
                 #             gg[10] + gg[8] - y - pred[idx, jdx,8]) ** 2
                 # conf_loss = (1 - a[x, y]) ** 2
                 # class_loss = ((pred[idx, 0:7, x, y] - gg[0:7]) ** 2).sum()
-                class_loss = torch.nn.MSELoss(reduction='sum')(pred[idx, jdx*7:jdx*7+7, x, y], gg[0:7])
+                # try:
+                #     class_pred = pred[idx, :, x - 3:x + 3, y - 3:y + 3].mean(dim=2).mean(dim=1)
+                #     if not class_pred:
+                #         class_pred = pred[idx, :, x, y]
+                # except:
+                class_pred = pred[idx, :, x, y]
+                class_loss = LabelSmoothing(smoothing=0.1)(class_pred, gg[0:7])
                 l[jdx] = class_loss
                 # l[jdx] = xy_loss
             loss[idx] = l.mean()
@@ -80,8 +109,8 @@ class MaskLoss(torch.nn.Module):
         n = size[3]
         for idx, g in enumerate(gt):
             l = torch.zeros((size[1]), dtype=float)
-            for jdx,gg in enumerate(g):
-                l[jdx] = torch.nn.MSELoss(reduction='sum')(pred[idx,jdx], gg)
+            for jdx, gg in enumerate(g):
+                l[jdx] = LabelSmoothing(smoothing=0.1)(pred[idx, jdx], gg)
             loss[idx] = l.mean()
         return loss  ## l of dim bsize
 
@@ -107,11 +136,11 @@ class KeypointLoss(torch.nn.Module):
         masks_loss = []
 
         for idx in range(self.nstack + 1):
-            heatmap_preds = combined_preds[idx][:, :self.keys]*masks[idx]
+            heatmap_preds = combined_preds[idx][:, :self.keys] * masks[idx]
             combined_loss.append(self.heatmapLoss(heatmap_preds, heatmaps[idx]))
             labels_loss.append(
-                self.labelLoss(combined_preds[idx][:, 2*self.keys:], labels, heatmap_preds))
+                self.labelLoss(combined_preds[idx][:, 2 * self.keys:], labels, heatmap_preds))
             masks_loss.append(
-                self.maskLoss(combined_preds[idx][:, self.keys:2*self.keys],masks[idx]))
+                self.maskLoss(combined_preds[idx][:, self.keys:2 * self.keys], masks[idx]))
 
         return torch.stack(combined_loss, 1), torch.stack(labels_loss, 1), torch.stack(masks_loss, 1)
