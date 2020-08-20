@@ -129,7 +129,7 @@ def sort_string(lst):
 
 
 def test():
-    trainPath = r'/home/dwxt/project/dcm/test'
+    trainPath = os.getcwd()+r'/../data/test'
     config = init()
     config['inference']['net'].cuda().eval()
     input_res = config['train']['input_res']
@@ -148,6 +148,16 @@ def test():
     except:
         info_result = read_info(trainPath)
         info_result.to_csv(trainPath + info_path, sep=',', header=True)
+    try:
+        with open(trainPath + "/series_map.json", "r") as f:
+            study_t2_map = json.load(f)
+            print("加载入文件完成...")
+            pd_map = pd.DataFrame(study_t2_map)
+            info_result = pd.merge(info_result, pd_map, how='right', on=['studyUid', 'seriesUid'])
+    except:
+        pass
+
+
     uid = info_result.groupby(['studyUid', 'seriesUid'])
     result_list = []
     print(len(uid))
@@ -178,7 +188,7 @@ def test():
                 #       zIndex + 2)
 
     print(tic)
-    with open('data-{}.json'.format(tic), 'w', encoding='utf-8') as f:
+    with open("../submit/submit_"+datetime.now().strftime('%Y%m%d_%H%M%S') + ".csv", 'w', encoding='utf-8') as f:
         f.write(json.dumps([d for d in study_result.values()], ensure_ascii=False))
     print('Done {} (t={:0.2f}s)'.format(len(study_score), time.time() - tic))
 

@@ -47,7 +47,7 @@ def read_info(trainPath):
     return dcm_info
 
 
-trainPath = r'/home/dwxt/project/dcm/test'
+trainPath = r'/home/dwxt/project/dcm/testBB'
 info_path = '/test_info.csv'
 try:
     info_result = pd.read_csv(trainPath + info_path)
@@ -55,7 +55,7 @@ try:
 except:
     info_result = read_info(trainPath)
     info_result.to_csv(trainPath + info_path, sep=',', header=True)
-with open('data-1595633952.4482002.json', 'r', encoding='utf-8') as f:
+with open('../../submit/submit_20200203_040506.csv', 'r', encoding='utf-8') as f:
     study_result = json.load(f)
 for i, v in enumerate(study_result):
     for data_ in v['data']:
@@ -70,5 +70,13 @@ for i, v in enumerate(study_result):
                 continue
             orig_img[p['coord'][1]-2:p['coord'][1]+2, p['coord'][0]-2:p['coord'][0]+2] = 255
         plt.imshow(orig_img)
+        for p in points:
+            print(p['coord'][1], p['coord'][0])
+            if p['coord'][1]>orig_img.shape[0] or p['coord'][0]>orig_img.shape[1]:
+                continue
+            if '-' in p['tag']['identification']:
+                plt.text(p['coord'][0] + 5, p['coord'][1], p['tag']['disc'], fontsize=10)
+            else:
+                plt.text(p['coord'][0] + 5, p['coord'][1], p['tag']['vertebra'], fontsize=10)
         plt.title(instanceUid)
         plt.show()

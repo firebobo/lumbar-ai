@@ -1,11 +1,17 @@
 import os
 import shutil
+import sys
+import data.dp
+import data.ref as ds
 
+from torchvision.transforms import transforms
 from tqdm import tqdm
 from os.path import dirname
 
 import torch.backends.cudnn as cudnn
+import torch.utils.data
 
+from data.dp import Dataset
 from task.pose import do_train, do_valid
 
 cudnn.benchmark = True
@@ -20,6 +26,7 @@ import numpy as np
 from datetime import datetime
 from pytz import timezone
 from task import cfg,update_config
+
 
 def parse_command_line():
     parser = argparse.ArgumentParser(description='Train keypoints network')
@@ -52,7 +59,8 @@ def reload(config):
 
     if opt.continue_exp:
         resume = os.path.join('exp', opt.continue_exp)
-        resume_file = os.path.join(resume, 'checkpoint.pt')
+        # resume_file = os.path.join(resume, 'checkpoint.pt')
+        resume_file = os.path.join(resume, 'model_best.pt')
         if os.path.isfile(resume_file):
             print("=> loading checkpoint '{}'".format(resume))
             checkpoint = torch.load(resume_file)
@@ -109,9 +117,10 @@ def train(data_loaders, config, post_epoch=None):
                 break
         # do_train(config['train']['epoch'], config, data_loaders['train_valid'])
         do_train(config['train']['epoch'], config, data_loaders['train'])
-
-        mean_correct = do_valid(config['train']['epoch'], config, data_loaders['valid'])
-        # train_mean_loss = do_valid(config['train']['epoch'], config, data_loaders['valid_train'])
+        # train_mean_correct = do_valid(config['train']['epoch'], config, data_loaders['valid_train'])
+        valid_mean_correct = do_valid(config['train']['epoch'], config, data_loaders['valid'])
+        # mean_correct = (train_mean_correct+valid_mean_correct)/2
+        mean_correct = valid_mean_correct
         train_mean_loss = 0
         config['train']['epoch'] += 1
         config['train']['scheduler'].step()
@@ -154,12 +163,46 @@ def init():
     return config
 
 
+def data_init(config):
+    batchsize = config['train']['batchsize']
+    current_path = os.path.dirname(os.path.abspath(__file__))
+    sys.path.append(current_path)
+
+    annot_path = r'/annotation.json'
+    train_data_dir = os.getcwd()+r'/../data/train'
+    valid_data_dir = os.getcwd()+r'/../data/valid'
+    info_name = r'/info.csv'
+    iters = config['train']['train_iters']
+    batch_size = config['train']['batchsize']
+    tans = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize([0.5], [0.5])
+    ])
+    train_db = Dataset(config, ds.Lumbar(train_data_dir, annot_path, info_name), iters * batch_size, 150, True, tans)
+
+    valid_train_db = Dataset(config, ds.Lumbar(train_data_dir, annot_path, info_name),
+                             config['train']['valid_train_iters'] * batch_size, 150, False, tans)
+
+    train_valid_db = Dataset(config, ds.Lumbar(valid_data_dir, annot_path, info_name),
+                             config['train']['train_valid_iters'] * batch_size, 51, True, tans)
+    valid_db = Dataset(config, ds.Lumbar(valid_data_dir, annot_path, info_name),
+                       config['train']['valid_iters'] * batch_size, 51, False, tans)
+
+    dataset = {'train': train_db, 'train_valid': train_valid_db, 'valid': valid_db, 'valid_train': valid_train_db}
+
+    loaders = {}
+    for key in dataset:
+        loaders[key] = torch.utils.data.DataLoader(dataset[key], batch_size=batchsize, shuffle=True,
+                                                   num_workers=config['train']['num_workers'], pin_memory=False)
+
+    return loaders
+
+
 def main():
     config = init()
-    data_loaders = config['data_provider'].init(config)
+    data_loaders = data_init(config)
     train(data_loaders, config)
     print(datetime.now(timezone('EST')))
-
 
 if __name__ == '__main__':
     main()

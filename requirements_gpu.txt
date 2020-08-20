@@ -2,7 +2,7 @@ tqdm==4.46.1
 simpleitk==1.2.4
 pytz==2020.1
 pandas==1.0.3
-torch==1.2.0
+torch==1.5.0
 opencv-python
 pillow
 torchvision==0.4.0

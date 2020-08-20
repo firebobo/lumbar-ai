@@ -6,6 +6,7 @@ class LabelSmoothing(nn.Module):
     """
     NLL loss with label smoothing.
     """
+
     def __init__(self, smoothing=0.0):
         """
         Constructor for the LabelSmoothing module.
@@ -16,11 +17,10 @@ class LabelSmoothing(nn.Module):
         self.smoothing = smoothing
 
     def forward(self, x, target):
-
-        true_dist = target.data.clone()#先深复制过来
+        true_dist = target.data.clone()  # 先深复制过来
         K = target.shape[-1]  # number of channels
         true_dist = ((1 - self.smoothing) * true_dist) + (self.smoothing / K)
-        loss = torch.nn.BCEWithLogitsLoss(reduction='sum')(x,true_dist)
+        loss = torch.nn.BCELoss(reduction='sum')(x, true_dist)
         return loss.mean()
 
 
@@ -70,6 +70,8 @@ class LabelLoss(torch.nn.Module):
             l = torch.zeros((gt.shape[1]), dtype=float)
             for jdx, gg in enumerate(g):
                 a = heatmap[idx, jdx]
+                if a.max() == 0:
+                    continue
                 index = int(a.argmax())
                 x = int(index / m)
                 y = index % m
@@ -80,11 +82,16 @@ class LabelLoss(torch.nn.Module):
                 # conf_loss = (1 - a[x, y]) ** 2
                 # class_loss = ((pred[idx, 0:7, x, y] - gg[0:7]) ** 2).sum()
                 # try:
-                #     class_pred = pred[idx, :, x - 3:x + 3, y - 3:y + 3].mean(dim=2).mean(dim=1)
-                #     if not class_pred:
-                #         class_pred = pred[idx, :, x, y]
+                #     class_ = pred[idx, 7 * jdx:7 * jdx + 7, x - 3:x + 3, y - 3:y + 3]
+                #     # print(class_.size())
+                #     if class_.size() != torch.Size([7, 6, 6]):
+                #         class_pred = pred[idx, 7 * jdx:7 * jdx + 7, x, y]
+                #     else:
+                #         class_pred = class_.mean(dim=2).mean(dim=1)
+                #
                 # except:
-                class_pred = pred[idx, :, x, y]
+                class_pred = pred[idx, 7 * jdx:7 * jdx + 7, x, y]
+
                 class_loss = LabelSmoothing(smoothing=0.1)(class_pred, gg[0:7])
                 l[jdx] = class_loss
                 # l[jdx] = xy_loss

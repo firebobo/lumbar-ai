@@ -11,8 +11,7 @@ from torchvision.transforms import Compose, Resize, ToTensor, transforms
 import matplotlib.pyplot as plt
 import utils.img
 import data.ref as ds
-from task import cfg, update_config
-from train import parse_command_line
+
 
 
 class GenerateHeatmap():
@@ -86,7 +85,7 @@ class Dataset(torch.utils.data.Dataset):
     def loadImage(self, idx):
         ds = self.ds
 
-        orig_img,keypoints,labels = ds.getAnnots(idx)
+        orig_img, keypoints, labels = ds.getAnnots(idx)
 
         width, height = orig_img.shape[0:2]
         img_aug_scale = np.array([self.input_res / height, self.input_res / width])
@@ -103,9 +102,9 @@ class Dataset(torch.utils.data.Dataset):
             inp = random_brightness(inp, 32)
             inp = random_contrast(inp, 1, 1.5)
             inp = random_brightness(inp, 32)
-
-            noise = np.random.normal(0, 20, inp.shape)
-            inp = inp+noise
+            if random.randint(0, 1):
+                noise = np.random.normal(0, 20, inp.shape)
+                inp = inp + noise
             inp = inp.clip(0, 255).astype(np.float32)
             ## generate heatmaps on outres
             # inp = inp.astype(np.int).astype(np.float32)
@@ -128,13 +127,20 @@ class Dataset(torch.utils.data.Dataset):
         kpts = [(kpt_change * (2 ** i)).astype(np.int) for i in range(self.num_deconvs + 1)]
         heatmaps = [self.generateHeatmap[i](kpts[i]) for i in range(self.num_deconvs + 1)]
         masks = []
-        for heatmap in heatmaps:
+        key_masks = np.random.randint(0, 2, (self.input_res, self.input_res))
+        for nid, heatmap in enumerate(heatmaps):
             mask = np.zeros(heatmap.shape, dtype=np.float32)
             mask[heatmap > 0] = 1
             masks.append(mask)
+            if nid == self.num_deconvs:
+                for m in mask:
+                    key_masks = np.bitwise_or(key_masks, m.astype(int))
+                if random.randint(0, 1) and self.is_deal:
+                    inp *= key_masks
+
         if self.is_show:
             self.show(heatmaps, inp, inp_img, kpts, kpt_change_pre)
-        return self.transforms(inp[np.newaxis, :, :]), heatmaps, np.array(labels).astype(np.float32),masks
+        return self.transforms(inp[np.newaxis, :, :]), heatmaps, np.array(labels).astype(np.float32), masks
 
     def geometric_rotation_changes(self, inp_img, keypoints, kpt_change_pre):
         scale = random.uniform(0.75, 1.25)
@@ -174,48 +180,14 @@ class Dataset(torch.utils.data.Dataset):
         plt.imshow(inp_img)
         plt.show()
 
-    def geometric_changes(self,image,kpt_change_pre,width,height):
+    def geometric_changes(self, image, kpt_change_pre, width, height):
         pts1 = np.float32([[50, 50], [200, 50], [50, 200]])
-        rand = np.random.randint(-30,30,size=(3,2))
-        pts2 = pts1+rand
+        rand = np.random.randint(-30, 30, size=(3, 2))
+        pts2 = pts1 + rand
         M = cv2.getAffineTransform(pts1, pts2.astype(np.float32))
         image_0 = cv2.warpAffine(image, M, (width, height))
         kpt_affine = utils.img.kpt_affine(kpt_change_pre, M)
-        return image_0,kpt_affine
-
-def init(config):
-    batchsize = config['train']['batchsize']
-    current_path = os.path.dirname(os.path.abspath(__file__))
-    sys.path.append(current_path)
-    train = config['inference']['train_num_eval']
-
-    annot_path = r'/annotation.json'
-    train_data_dir = r'/home/dwxt/project/dcm/train'
-    valid_data_dir = r'/home/dwxt/project/dcm/valid'
-    info_name = r'/info.csv'
-    iters = config['train']['train_iters']
-    batch_size = config['train']['batchsize']
-    tans = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize([0.5], [0.5])
-    ])
-    train_db = Dataset(config, ds.Lumbar(train_data_dir, annot_path, info_name), iters * batch_size, 150, True, tans)
-
-    valid_train_db = Dataset(config, ds.Lumbar(train_data_dir, annot_path, info_name), config['train']['valid_train_iters'] * batch_size, 150, True, tans)
-
-    train_valid_db = Dataset(config, ds.Lumbar(valid_data_dir, annot_path, info_name),
-                             config['train']['train_valid_iters'] * batch_size, 51, True, tans)
-    valid_db = Dataset(config, ds.Lumbar(valid_data_dir, annot_path, info_name),
-                       config['train']['valid_iters'] * batch_size, 51, False, tans)
-
-    dataset = {'train': train_db, 'train_valid': train_valid_db, 'valid': valid_db,'valid_train':valid_train_db}
-
-    loaders = {}
-    for key in dataset:
-        loaders[key] = torch.utils.data.DataLoader(dataset[key], batch_size=batchsize, shuffle=True,
-                                                   num_workers=config['train']['num_workers'], pin_memory=False)
-
-    return loaders
+        return image_0, kpt_affine
 
 
 if __name__ == '__main__':

@@ -32,7 +32,7 @@ __config__ = {
         'batchsize': 16,
         'input_res': 256,
         'output_res': 64,
-        'epoch_num': 14,
+        'epoch_num': 40,
         'data_num': 150,
         'train_iters': 500,
         'train_valid_iters': 170,
@@ -40,7 +40,7 @@ __config__ = {
         'valid_train_iters': 8,
         'learning_rate': 1e-3,
         'max_num_people': 1,
-        'loss': [1, 5, 0.01],
+        'loss': [1, 1, 0.01],
         'stack_loss': [1, 1, 1],
         'decay_iters': 10,
         'decay_lr': 0.5,
@@ -59,8 +59,8 @@ def build_targets(combined_preds):
     key_num = 11
     targets = np.zeros([size[0], nstask, key_num, 4])
     for idx in range(nstask):
-        heatmap_preds, mask_preds, label_preds = combined_preds[idx][:, :key_num].cpu(), nn.Sigmoid()(combined_preds[idx][:,key_num:2 * key_num].cpu()), \
-                                        nn.Sigmoid()(combined_preds[idx][:, 2 * key_num:].cpu())
+        heatmap_preds, mask_preds, label_preds = combined_preds[idx][:, :key_num].cpu(), \
+                                                 combined_preds[idx][:, key_num:2 * key_num].cpu(), combined_preds[idx][:, 2 * key_num:].cpu()
         size = heatmap_preds.shape
         mask = torch.zeros(size)
         mask[mask_preds > 0.7] = 1
@@ -82,7 +82,7 @@ def build_targets(combined_preds):
                 targets[jdx, idx, kdx, 0] = a[x_pred, y_pred]
                 targets[jdx, idx, kdx, 1:3] = [x_pred, y_pred]
                 if kdx % 2 == 0:
-                    y_ = label_preds[jdx, 2:7, x_pred, y_pred]
+                    y_ = label_preds[jdx, 7*kdx+2:7*kdx+7, x_pred, y_pred]
 
                     if y_.max() < 0.5:
                         ind = y_.argmax() + 1
@@ -93,7 +93,7 @@ def build_targets(combined_preds):
                                 ind = ind * 10 + inx + 1
 
                 else:
-                    y_ = label_preds[jdx, :2, x_pred, y_pred]
+                    y_ = label_preds[jdx, 7*kdx:7*kdx+2, x_pred, y_pred]
                     ind = y_.argmax() + 1
                 targets[jdx, idx, kdx, 3] = ind
 
@@ -180,15 +180,20 @@ def build_targets_compute(combined_preds, heatmap, label):
     xy_correct = 0
     all_correct = 0
     idx = -1
-    heatmap_preds, mask_preds, label_preds = combined_preds[idx][:, :key_num].cpu(), nn.Sigmoid()(combined_preds[idx][:, key_num:2 * key_num].cpu()), nn.Sigmoid()(combined_preds[idx][:, 2 * key_num:].cpu())
+    label = label.cpu()
+    heatmap_preds, mask_preds, label_preds = combined_preds[idx][:, :key_num].cpu(),combined_preds[idx][:, key_num:2 * key_num].cpu(), combined_preds[idx][:, 2 * key_num:].cpu()
     size = heatmap_preds.shape
     mask = torch.zeros(size)
     mask[mask_preds > 0.5] = 1
     n = size[3]
     heatmap_preds = heatmap_preds * mask
+
     for jdx, gg in enumerate(heatmap_preds):
         for kdx in range(key_num):
             a = heatmap_preds[jdx, kdx]
+            # m = mask[jdx,kdx]
+            # [x_pred,y_pred] = torch.nonzero(m).float().mean(dim=0).round().int()
+
             # plt.imshow(mask)
             # plt.show()
 
@@ -201,29 +206,40 @@ def build_targets_compute(combined_preds, heatmap, label):
             x = int(index / n)
             y = index % n
             if kdx % 2 == 0:
-                y_ = label_preds[jdx, 2:7, x_pred, y_pred]
-                for inx, la in enumerate(label[jdx, kdx, 2:7]):
+                y_ = label_preds[jdx, 7*kdx+2:7*kdx+7, x_pred, y_pred]
+                label_ = label[jdx, kdx, 2:7]
+                for la in label_:
                     if la == 1:
-                        if (x_pred - x) ** 2 + (y - y_pred) ** 2 <= 9:
-                            if y_[inx] >= 0.5:
-                                n_correct += 1
-                            xy_correct += 1
                         all_correct += 1
+                for inx, la in enumerate(y_):
+                    if la >= .5:
+                        if (x_pred - x) ** 2 + (y - y_pred) ** 2 <= 9:
+                            if label_[inx] == 1:
+                                n_correct += 1
+                            else:
+                                all_correct += 1
+                            # else:
+                            #     print(kdx,y_,label_)
+                            xy_correct += 1
 
                 if y_.max() < 0.5:
                     ind = y_.argmax()
-                    if label[jdx, kdx, 2 + ind] == 1 and (x_pred - x) ** 2 + (y - y_pred) ** 2 <= 9:
-                        n_correct += 1
+                    if (x_pred - x) ** 2 + (y - y_pred) ** 2 <= 9:
+                        xy_correct += 1
+                        if label_[ind] == 1:
+                            n_correct += 1
 
 
             else:
-                y_ = label_preds[jdx, :2, x_pred, y_pred]
+                y_ = label_preds[jdx, 7*kdx:7*kdx+2, x_pred, y_pred]
                 ind = y_.argmax()
                 all_correct += 1
                 if (x_pred - x) ** 2 + (y - y_pred) ** 2 <= 9:
                     xy_correct += 1
                     if label[jdx, kdx, ind] == 1:
                         n_correct += 1
+                    # else:
+                    #     print(kdx,y_)
 
     return n_correct / all_correct, xy_correct / all_correct
 
@@ -244,12 +260,14 @@ def do_valid(epoch, config, loader):
                     inputs[i] = make_input(inputs[i])
 
             combined_preds = net(inputs[0])
-            n_correct, xy_correct = build_targets_compute(combined_preds, inputs[1][-1], inputs[2])
 
             combined_loss, labels_loss, masks_loss = config['inference']["lossLayers"](combined_preds,
                                                                                        **{'heatmaps': inputs[1],
                                                                                           'labels': inputs[2],
                                                                                           'masks': inputs[3]})
+
+            n_correct, xy_correct = build_targets_compute(combined_preds, inputs[1][-1], inputs[2])
+
             toprint = '\n{} {}: '.format(epoch, batch_idx)
             heatmap_loss = torch.sum(combined_loss.cpu().mul(torch.Tensor(config['train']['stack_loss'])))
             label_loss = torch.sum(labels_loss.cpu().mul(torch.Tensor(config['train']['stack_loss'])))
