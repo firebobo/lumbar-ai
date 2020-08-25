@@ -45,9 +45,10 @@ class Lumbar:
             self.info = result
             self.file_info = path_info
 
-
-
         print('Done (t={:0.2f}s)'.format(time.time()- tic))
+
+    def size(self):
+        return len(self.info.groupby(['studyUid']))
 
     def read_info(self):
         # studyUid,seriesUid,instanceUid,annotation

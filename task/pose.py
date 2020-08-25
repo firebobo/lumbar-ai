@@ -63,7 +63,7 @@ def build_targets(combined_preds):
                                                  combined_preds[idx][:, key_num:2 * key_num].cpu(), combined_preds[idx][:, 2 * key_num:].cpu()
         size = heatmap_preds.shape
         mask = torch.zeros(size)
-        mask[mask_preds > 0.7] = 1
+        mask[mask_preds > 0.5] = 1
         n = size[3]
         heatmap_preds = heatmap_preds * mask
         for jdx, gg in enumerate(heatmap_preds):
@@ -76,8 +76,8 @@ def build_targets(combined_preds):
                 index = int(a.argmax())
                 x_pred = int(index / n)
                 y_pred = index % n
-                # if a[x,y]>0.9:
-                #     plt.imshow(mask)
+                # if a[x_pred,y_pred]>0.9:
+                #     plt.imshow(mask[jdx, kdx])
                 #     plt.show()
                 targets[jdx, idx, kdx, 0] = a[x_pred, y_pred]
                 targets[jdx, idx, kdx, 1:3] = [x_pred, y_pred]

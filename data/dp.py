@@ -63,7 +63,7 @@ def random_brightness(image, delta=32):
 
 
 class Dataset(torch.utils.data.Dataset):
-    def __init__(self, config, ds, size, index, is_deal, transforms, is_show=False):
+    def __init__(self, config, ds, size, is_deal, transforms, is_show=False):
         self.input_res = config['train']['input_res']
         self.output_res = config['train']['output_res']
         self.size = size
@@ -71,7 +71,7 @@ class Dataset(torch.utils.data.Dataset):
         self.generateHeatmap = [GenerateHeatmap(int(self.output_res * (2 ** (i))), config['inference']['num_parts']) for
                                 i in range(self.num_deconvs + 1)]
         self.ds = ds
-        self.index = index
+        self.index = ds.size()
         self.is_deal = is_deal
         self.transforms = transforms
         self.is_show = is_show
@@ -140,7 +140,7 @@ class Dataset(torch.utils.data.Dataset):
 
         if self.is_show:
             self.show(heatmaps, inp, inp_img, kpts, kpt_change_pre)
-        return self.transforms(inp[np.newaxis, :, :]), heatmaps, np.array(labels).astype(np.float32), masks
+        return self.transforms(inp), heatmaps, np.array(labels).astype(np.float32), masks
 
     def geometric_rotation_changes(self, inp_img, keypoints, kpt_change_pre):
         scale = random.uniform(0.75, 1.25)
@@ -203,7 +203,7 @@ if __name__ == '__main__':
         transforms.Normalize([0.5], [0.5])
     ])
 
-    train_db = Dataset(config, ds.Lumbar(train_data_dir, annot_path, info_name), size, 150, True, tans, True)
+    train_db = Dataset(config, ds.Lumbar(train_data_dir, annot_path, info_name), size, True, tans, True)
 
     for i in range(51):
         train_db.loadImage(i)

@@ -696,7 +696,8 @@ class PoseHigherResolutionNet(nn.Module):
         return nn.Sequential(*modules), num_inchannels
 
     def forward(self, x):
-        x = x.permute(0, 2, 1, 3)
+        # print(x.shape)
+        # x = x.permute(0, 2, 1, 3)
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)

@@ -178,15 +178,15 @@ def data_init(config):
         transforms.ToTensor(),
         transforms.Normalize([0.5], [0.5])
     ])
-    train_db = Dataset(config, ds.Lumbar(train_data_dir, annot_path, info_name), iters * batch_size, 150, True, tans)
+    train_db = Dataset(config, ds.Lumbar(train_data_dir, annot_path, info_name), iters * batch_size, True, tans)
 
     valid_train_db = Dataset(config, ds.Lumbar(train_data_dir, annot_path, info_name),
-                             config['train']['valid_train_iters'] * batch_size, 150, False, tans)
+                             config['train']['valid_train_iters'] * batch_size, False, tans)
 
     train_valid_db = Dataset(config, ds.Lumbar(valid_data_dir, annot_path, info_name),
-                             config['train']['train_valid_iters'] * batch_size, 51, True, tans)
+                             config['train']['train_valid_iters'] * batch_size, True, tans)
     valid_db = Dataset(config, ds.Lumbar(valid_data_dir, annot_path, info_name),
-                       config['train']['valid_iters'] * batch_size, 51, False, tans)
+                       config['train']['valid_iters'] * batch_size, False, tans)
 
     dataset = {'train': train_db, 'train_valid': train_valid_db, 'valid': valid_db, 'valid_train': valid_train_db}
 

@@ -46,7 +46,7 @@ def reload(config):
         resume_file = os.path.join(resume, 'model_best.pt')
         if os.path.isfile(resume_file):
             print("=> loading checkpoint '{}'".format(resume))
-            checkpoint = torch.load(resume_file)
+            checkpoint = torch.load(resume_file, map_location='cpu')
 
             from collections import OrderedDict
             new_state_dict = OrderedDict()
@@ -129,9 +129,9 @@ def sort_string(lst):
 
 
 def test():
-    trainPath = os.getcwd()+r'/../data/test'
+    trainPath = os.getcwd()+r'/../data/testB'
     config = init()
-    config['inference']['net'].cuda().eval()
+    config['inference']['net'].eval()
     input_res = config['train']['input_res']
     output_res = config['train']['output_res']
     nstack = config['inference']['nstack']
@@ -221,9 +221,8 @@ def build_one(config, frame, input_res, nstack, study_lang, study_result, study_
     orig_img = tcUtils.dicom2array(path)
     input_w, input_h = orig_img.shape
     inp_img = cv2.resize(orig_img, (input_res, input_res)).astype(np.float32)
-    img = inp_img[np.newaxis, :, :]
-    img = tans(img)
-    img = img.unsqueeze(0).cuda()
+    img = tans(inp_img)
+    img = img.unsqueeze(0)
     out = do_test({'imgs': img}, config)
     for o in out:
         data = {}
@@ -259,7 +258,7 @@ def build_one(config, frame, input_res, nstack, study_lang, study_result, study_
         data['annotation'] = annotations
         result = {"studyUid": frame_info[3], "version": "v0.1", "data": [data]}
         lang = inp_img.mean()
-        if conf > 9 and (not study_score.get(frame_info[3]) or study_score.get(frame_info[3]) < conf):
+        if not study_score.get(frame_info[3]) or study_score.get(frame_info[3]) < conf:
             # and (not study_score.get(frame_info[3]) or study_score.get(frame_info[3]) < conf)
             # if study_score.get(frame_info[3]) is not None and study_score.get(frame_info[3]) > conf + 1:
             #     continue
